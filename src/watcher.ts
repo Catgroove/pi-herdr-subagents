@@ -206,6 +206,10 @@ export function watchSubagent(
         };
       }
       if (exitData?.type === "done") {
+        // subagent_done writes .exit mid-turn, and the model may still write its
+        // final message after the tool result. Read the summary only once the
+        // child process has exited (exitcode sidecar or pane gone).
+        if (trigger === "sidecar" && readExitCode() === null) return null;
         return {
           kind: "completed",
           summary: readSummary() ?? "Sub-agent exited without output",
