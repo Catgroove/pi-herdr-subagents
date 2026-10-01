@@ -27,8 +27,7 @@ pi-interactive-subagents drives its four muxes through one generic backend mecha
 pane, wait for its interactive shell, *type a launch command into it*, verify startup with
 retries, and poll the screen for a completion sentinel. Its hardest reliability edge cases
 trace back to that open-loop mechanism — a shell still running direnv/devenv init can swallow
-the typed command, and a dead child looks like a screen that stopped changing (the war story is
-in [`docs/PROJECT-BRIEF.md`](docs/PROJECT-BRIEF.md)).
+the typed command, and a dead child looks like a screen that stopped changing.
 
 To be fair: that mechanism is an implementation choice more than a hard limit of the muxes.
 tmux, zellij, and wezterm can all launch a command directly at pane creation, and sidecar files
@@ -208,18 +207,15 @@ Useful tricks:
 ## Known limitations / upstream notes
 
 - **Exit-code sidecar**: herdr's `pane.exited` event carries no exit code and pane records
-  vanish on exit, so the wrapper script writes `<session>.exitcode`. A herdr feature request
-  for `exit_code` on `pane.exited` is drafted (not yet filed) in
-  [`docs/full-socket-client.md`](docs/full-socket-client.md) — once it lands, the sidecar can
-  be deleted.
+  vanish on exit, so the wrapper script writes `<session>.exitcode`. Once herdr reports
+  `exit_code` on `pane.exited`, the sidecar can be deleted.
 - **No stall detection** (yet): a child that is alive but spinning its wheels is not flagged;
   herdr's sidebar agent states are the current signal. Could be reintroduced on
   `pane.agent_status_changed`.
 - **Single-workspace topology**: children split beside the orchestrator pane
   (`--target-pane $HERDR_PANE_ID --direction right`); multi-workspace layouts are unexplored.
 - **Hybrid client**: request/response goes through the `herdr` CLI; only `events.subscribe`
-  uses a raw socket connection. The all-socket design (and when to switch) is sketched in
-  [`docs/full-socket-client.md`](docs/full-socket-client.md).
+  uses a raw socket connection.
 
 ## Development
 

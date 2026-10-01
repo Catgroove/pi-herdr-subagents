@@ -2,9 +2,8 @@
 //
 // Ported near-verbatim from pi-interactive-subagents (MIT, HazAT)
 // pi-extension/subagents/index.ts @ fix/launch-verify-retry — this module is the
-// frontmatter compatibility contract (PROJECT-BRIEF.md hard requirement 2): both
-// extensions read the same ~/.pi/agent/agents/*.md files during the transition
-// period, so field semantics must match exactly. Read-only consumption; the regex
+// frontmatter compatibility contract: field semantics match the reference so the same
+// ~/.pi/agent/agents/*.md files work with both. Read-only consumption; the regex
 // line parser is intentionally kept (compat trumps elegance — no YAML lib).
 //
 // Adaptations vs the reference:

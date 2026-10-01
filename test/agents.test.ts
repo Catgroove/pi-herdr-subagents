@@ -1,9 +1,8 @@
 // Ported from pi-interactive-subagents test/test.ts ("subagent discovery" +
-// resolveDenyTools cases) — these tests define the frontmatter compatibility contract
-// (PROJECT-BRIEF.md hard requirement 2). Adaptations: functions imported directly from
-// src/agents.ts instead of the extension __test__ API; no bundled-agent runtime source;
-// discovery-listing assertions use discoverAgentDefinitions() directly instead of the
-// subagents_list tool.
+// resolveDenyTools cases) — these tests define the frontmatter compatibility contract.
+// Adaptations: functions imported directly from src/agents.ts instead of the extension
+// __test__ API; no bundled-agent runtime source; discovery-listing assertions use
+// discoverAgentDefinitions() directly instead of the subagents_list tool.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";

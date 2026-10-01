@@ -1,6 +1,5 @@
 /**
- * direnv/devenv/varlock env-chain integration tests (ISC-1 env chain,
- * docs/PROJECT-BRIEF.md hard requirement 5).
+ * direnv/devenv/varlock env-chain integration tests (ISC-1 env chain).
  *
  *   1. synthetic direnv (portable): temp dir with an allowed .envrc → the
  *      generated wrapper script wraps pi in `direnv exec` and the child's
