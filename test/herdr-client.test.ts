@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import {
   createHerdrClient,
-  HERDR_PLUGIN_ARGV_ENTRYPOINT,
   type ExecFn,
 } from "../src/herdr/client.ts";
 
@@ -57,7 +56,6 @@ describe("HerdrClient", () => {
       launchScriptFile: "/tmp/launch.sh",
     });
 
-    assert.equal(HERDR_PLUGIN_ARGV_ENTRYPOINT, "argv");
     assert.equal(calls.length, 1);
     assert.equal(calls[0].cmd, "herdr");
     assert.deepEqual(calls[0].args, [

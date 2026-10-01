@@ -89,45 +89,13 @@ pi
 The `subagent`, `subagent_resume`, `subagent_interrupt`, and `subagents_list` tools appear
 automatically.
 
-## Generic argv pane contract
+The plugin dispatcher runs **non-interactive, non-login bash**. The generated launch script uses
+absolute paths for binaries; shell rc files are not loaded and direnv is applied explicitly (see
+below). That clean startup is intentional: it avoids typing a command into a pane whose
+interactive shell may still be running direnv initialization.
 
-The bundled Herdr plugin also provides a generic launcher for non-subagent consumers. Its
-contract is:
-
-- plugin id: `pi-herdr-subagents`
-- entrypoint: `argv`
-- launch-script env var: `PI_HERDR_LAUNCH_SCRIPT`
-
-Point the env var at an absolute, readable script. For example, a launch script for another TUI
-could contain:
-
-```bash
-#!/usr/bin/env bash
-trap '' TSTP
-exec /absolute/path/to/hunk
-```
-
-Open it in a pane with:
-
-```bash
-herdr plugin pane open \
-  --plugin pi-herdr-subagents \
-  --entrypoint argv \
-  --placement split \
-  --target-pane "$HERDR_PANE_ID" \
-  --direction right \
-  --cwd "$PWD" \
-  --env "PI_HERDR_LAUNCH_SCRIPT=/absolute/path/to/launch-hunk.sh" \
-  --no-focus
-```
-
-The dispatcher runs **non-interactive, non-login bash**. Use absolute paths for binaries; shell
-rc files and direnv are not loaded unless the launch script does that work itself. That clean
-startup is intentional: it avoids typing a command into a pane whose interactive shell may
-still be running direnv initialization.
-
-Launch scripts should also `trap '' TSTP`. An argv-launched pane has no parent interactive shell
-from which to run `fg`, so Ctrl+Z would otherwise suspend the command and wedge the pane
+The launch script also runs `trap '' TSTP`. An argv-launched pane has no parent interactive
+shell from which to run `fg`, so Ctrl+Z would otherwise suspend the command and wedge the pane
 permanently.
 
 **Outside herdr** the extension registers nothing.

@@ -46,13 +46,12 @@ export interface PluginInfo {
 
 export const HERDR_PLUGIN_ID = "pi-herdr-subagents";
 export const HERDR_PLUGIN_ENTRYPOINT = "subagent";
-export const HERDR_PLUGIN_ARGV_ENTRYPOINT = "argv";
 export const MIN_HERDR_VERSION = "0.8.2";
 
 export interface HerdrClient {
   /**
    * Split a plugin-owned pane beside the orchestrator and dispatch one generated
-   * launch script through the plugin's fixed argv entrypoint. No shell typing,
+   * launch script through the plugin's fixed entrypoint. No shell typing,
    * launch race, or per-call argv support is required from Herdr.
    */
   paneStart(p: {
