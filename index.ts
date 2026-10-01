@@ -2,7 +2,7 @@
  * pi-herdr-subagents — interactive subagent orchestration built natively on herdr.
  *
  * Extension entry: activation guard, tool registration, outcome→steer wiring,
- * slim widget, /subagent + /iterate commands.
+ * slim widget.
  *
  * Activation strategy (PLAN.md Key Decision #3 — tool names collide with
  * pi-interactive-subagents by design, and pi resolves duplicates
@@ -13,15 +13,15 @@
  *   - outside herdr: register nothing at load; on `session_start`, register
  *     setup-hint stubs only when no other extension provides `subagent`.
  *
- * Tool skeletons, descriptions/promptSnippets, self-spawn block, and command
- * handlers ported from pi-interactive-subagents (MIT, HazAT)
+ * Tool skeletons, descriptions/promptSnippets, and self-spawn block ported from
+ * pi-interactive-subagents (MIT, HazAT)
  * pi-extension/subagents/index.ts @ fix/launch-verify-retry, adapted for herdr
  * (argv launch via src/launch.ts + herdr client, no mux/screen-scrape code).
  */
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { constants as fsConstants, copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -1037,121 +1037,6 @@ function registerListTool(pi: ExtensionAPI): void {
   });
 }
 
-// ── commands ────────────────────────────────────────────────────────────────
-
-const AGENT_TEMPLATE_FILES = ["worker.md", "planner.md", "scout.md", "reviewer.md"];
-
-function registerCommands(pi: ExtensionAPI): void {
-  // /subagents-init — copy package examples into user-owned config
-  pi.registerCommand("subagents-init", {
-    description: "Copy example subagent definitions: /subagents-init [global|project]",
-    getArgumentCompletions: (prefix) => {
-      const options = [
-        {
-          value: "global",
-          label: "global",
-          description: "copy example agent defs to ~/.pi/agent/agents",
-        },
-        {
-          value: "project",
-          label: "project",
-          description: "copy example agent defs to .pi/agents",
-        },
-      ];
-      const filtered = options.filter(({ value }) => value.startsWith(prefix));
-      return filtered.length > 0 ? filtered : null;
-    },
-    handler: async (args, ctx) => {
-      const scope = args.trim() || "global";
-      if (scope !== "global" && scope !== "project") {
-        ctx.ui.notify("Usage: /subagents-init [global|project]", "error");
-        return;
-      }
-
-      const targetDir =
-        scope === "global"
-          ? join(getAgentConfigDir(), "agents")
-          : join(ctx.cwd, ".pi", "agents");
-      const sourceDir = join(dirname(MODULE_PATH), "agents");
-      const installed: string[] = [];
-      const skipped: string[] = [];
-      mkdirSync(targetDir, { recursive: true });
-
-      for (const filename of AGENT_TEMPLATE_FILES) {
-        try {
-          copyFileSync(
-            join(sourceDir, filename),
-            join(targetDir, filename),
-            fsConstants.COPYFILE_EXCL,
-          );
-          installed.push(filename);
-        } catch (error: any) {
-          if (error?.code === "EEXIST") {
-            skipped.push(filename);
-            continue;
-          }
-          ctx.ui.notify(
-            `Failed to install ${filename} in ${targetDir}: ${error?.message ?? String(error)}`,
-            "error",
-          );
-          return;
-        }
-      }
-
-      ctx.ui.notify(
-        [
-          `Installed: ${installed.length > 0 ? installed.join(", ") : "none"}`,
-          `Skipped existing: ${skipped.length > 0 ? skipped.join(", ") : "none"}`,
-          `Target: ${targetDir}`,
-        ].join("\n"),
-        "info",
-      );
-    },
-  });
-
-  // /iterate — fork the session into a subagent
-  pi.registerCommand("iterate", {
-    description: "Fork session into a subagent for focused work (bugfixes, iteration)",
-    handler: async (args, _ctx) => {
-      const task = args.trim() || "";
-      const toolCall = task
-        ? `Use subagent to fork a session. fork: true, name: "Iterate", task: ${JSON.stringify(task)}`
-        : `Use subagent to fork a session. fork: true, name: "Iterate", task: "The user wants to do some hands-on work. Help them with whatever they need."`;
-      pi.sendUserMessage(toolCall);
-    },
-  });
-
-  // /subagent — spawn a subagent by name
-  pi.registerCommand("subagent", {
-    description: "Spawn a subagent: /subagent <agent> <task>",
-    handler: async (args, ctx) => {
-      const trimmed = args.trim();
-      if (!trimmed) {
-        ctx.ui.notify("Usage: /subagent <agent> [task]", "warning");
-        return;
-      }
-
-      const spaceIdx = trimmed.indexOf(" ");
-      const agentName = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
-      const task = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
-
-      const defs = loadAgentDefaults(agentName);
-      if (!defs) {
-        ctx.ui.notify(
-          `Agent "${agentName}" not found in ~/.pi/agent/agents/ or .pi/agents/`,
-          "error",
-        );
-        return;
-      }
-
-      const taskText = task || `You are the ${agentName} agent. Wait for instructions.`;
-      const displayName = agentName[0].toUpperCase() + agentName.slice(1);
-      const toolCall = `Use subagent with agent: "${agentName}", name: "${displayName}", task: ${JSON.stringify(taskText)}`;
-      pi.sendUserMessage(toolCall);
-    },
-  });
-}
-
 // ── extension entry ─────────────────────────────────────────────────────────
 
 export default function herdrSubagents(pi: ExtensionAPI) {
@@ -1172,7 +1057,6 @@ export default function herdrSubagents(pi: ExtensionAPI) {
     if (shouldRegister("subagent_resume")) registerResumeTool(pi);
     if (shouldRegister("subagent_interrupt")) registerInterruptTool(pi);
     if (shouldRegister("subagents_list")) registerListTool(pi);
-    registerCommands(pi);
     registeredRealTools = true;
   }
 

@@ -59,19 +59,14 @@ interface FakeToolInfo {
 
 function createFakePi(opts?: { allTools?: FakeToolInfo[] }) {
   const registeredTools: any[] = [];
-  const commands: Array<{ name: string; handler: Function }> = [];
   const renderers = new Map<string, unknown>();
   const handlers = new Map<string, Function[]>();
   const sent: Array<{ message: any; options: any }> = [];
-  const sentUser: string[] = [];
   let allTools: FakeToolInfo[] | null = opts?.allTools ?? null;
 
   const api: any = {
     registerTool(tool: any) {
       registeredTools.push(tool);
-    },
-    registerCommand(name: string, options: any) {
-      commands.push({ name, ...options });
     },
     registerMessageRenderer(type: string, renderer: unknown) {
       renderers.set(type, renderer);
@@ -85,9 +80,6 @@ function createFakePi(opts?: { allTools?: FakeToolInfo[] }) {
     sendMessage(message: any, options: any) {
       sent.push({ message, options });
     },
-    sendUserMessage(text: string) {
-      sentUser.push(text);
-    },
     getAllTools(): FakeToolInfo[] {
       if (allTools) return allTools;
       return registeredTools.map((t) => ({ name: t.name, sourceInfo: { path: INDEX_PATH } }));
@@ -100,10 +92,8 @@ function createFakePi(opts?: { allTools?: FakeToolInfo[] }) {
   return {
     api,
     registeredTools,
-    commands,
     renderers,
     sent,
-    sentUser,
     setAllTools(tools: FakeToolInfo[]) {
       allTools = tools;
     },

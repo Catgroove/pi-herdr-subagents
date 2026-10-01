@@ -6,9 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -58,17 +56,12 @@ function envInsideHerdr(): void {
 
 function createFakePi() {
   const registeredTools: any[] = [];
-  const commands: Array<{ name: string; handler: Function }> = [];
   const handlers = new Map<string, Function[]>();
   const sent: Array<{ message: any; options: any }> = [];
-  const sentUser: string[] = [];
 
   const api: any = {
     registerTool(tool: any) {
       registeredTools.push(tool);
-    },
-    registerCommand(name: string, options: any) {
-      commands.push({ name, ...options });
     },
     registerMessageRenderer() {},
     registerShortcut() {},
@@ -79,9 +72,6 @@ function createFakePi() {
     },
     sendMessage(message: any, options: any) {
       sent.push({ message, options });
-    },
-    sendUserMessage(text: string) {
-      sentUser.push(text);
     },
     getAllTools() {
       return registeredTools.map((t) => ({ name: t.name }));
@@ -94,14 +84,9 @@ function createFakePi() {
   return {
     api,
     registeredTools,
-    commands,
     sent,
-    sentUser,
     findTool(name: string) {
       return registeredTools.find((t) => t.name === name);
-    },
-    findCommand(name: string) {
-      return commands.find((c) => c.name === name);
     },
     fire(event: string, eventObj: unknown, ctx: unknown) {
       for (const handler of handlers.get(event) ?? []) handler(eventObj, ctx);
@@ -251,12 +236,6 @@ describe("index tools: registration", () => {
     for (const name of ["subagent", "subagent_resume", "subagent_interrupt", "subagents_list"]) {
       assert.ok(names.includes(name), `expected ${name} to be registered`);
     }
-  });
-
-  it("registers /subagent and /iterate commands inside herdr", () => {
-    const fake = registerAll();
-    assert.ok(fake.findCommand("subagent"));
-    assert.ok(fake.findCommand("iterate"));
   });
 });
 
@@ -613,116 +592,9 @@ describe("index tools: polished widget", () => {
   });
 });
 
-// ── commands ────────────────────────────────────────────────────────────────
+// ── agent lookup ──────────────────────────────────────────────────────────────
 
-describe("index tools: commands", () => {
-  const templateNames = ["worker.md", "planner.md", "scout.md", "reviewer.md"].sort();
-
-  it("/subagents-init defaults to global and installs all four templates", async () => {
-    const fake = registerAll();
-    const fx = makeFixture();
-
-    const cmd = fake.findCommand("subagents-init");
-    assert.ok(cmd, "expected /subagents-init to be registered");
-    await cmd.handler("", fx.ctx);
-
-    assert.deepEqual(readdirSync(join(fx.agentDir, "agents")).sort(), templateNames);
-    assert.equal(fx.notifications.length, 1);
-    assert.match(fx.notifications[0].message, /Installed.*worker\.md.*planner\.md.*scout\.md.*reviewer\.md/s);
-  });
-
-  it("/subagents-init global explicitly installs into PI_CODING_AGENT_DIR", async () => {
-    const fake = registerAll();
-    const fx = makeFixture();
-
-    await fake.findCommand("subagents-init")!.handler("global", fx.ctx);
-
-    assert.deepEqual(readdirSync(join(fx.agentDir, "agents")).sort(), templateNames);
-    assert.equal(existsSync(join(fx.cwd, ".pi", "agents")), false);
-  });
-
-  it("/subagents-init project installs only into the command cwd", async () => {
-    const fake = registerAll();
-    const fx = makeFixture();
-
-    await fake.findCommand("subagents-init")!.handler("project", fx.ctx);
-
-    assert.deepEqual(readdirSync(join(fx.cwd, ".pi", "agents")).sort(), templateNames);
-    assert.deepEqual(readdirSync(join(fx.agentDir, "agents")), []);
-  });
-
-  it("/subagents-init skips existing files and symlinks without modifying them", async () => {
-    const fake = registerAll();
-    const fx = makeFixture();
-    const agentsDir = join(fx.agentDir, "agents");
-    const workerPath = join(agentsDir, "worker.md");
-    const reviewerPath = join(agentsDir, "reviewer.md");
-    const symlinkTarget = join(fx.root, "custom-reviewer.md");
-    writeFileSync(workerPath, "custom worker bytes\n");
-    writeFileSync(symlinkTarget, "custom reviewer bytes\n");
-    symlinkSync(symlinkTarget, reviewerPath);
-
-    await fake.findCommand("subagents-init")!.handler("global", fx.ctx);
-
-    assert.equal(readFileSync(workerPath, "utf8"), "custom worker bytes\n");
-    assert.equal(readFileSync(symlinkTarget, "utf8"), "custom reviewer bytes\n");
-    assert.match(fx.notifications[0].message, /Skipped.*worker\.md.*reviewer\.md/s);
-    assert.deepEqual(readdirSync(agentsDir).sort(), templateNames);
-  });
-
-  it("/subagents-init is idempotent and reports all files skipped on the second run", async () => {
-    const fake = registerAll();
-    const fx = makeFixture();
-    const cmd = fake.findCommand("subagents-init")!;
-
-    await cmd.handler("global", fx.ctx);
-    const before = Object.fromEntries(
-      templateNames.map((name) => [name, readFileSync(join(fx.agentDir, "agents", name), "utf8")]),
-    );
-    await cmd.handler("global", fx.ctx);
-
-    const after = Object.fromEntries(
-      templateNames.map((name) => [name, readFileSync(join(fx.agentDir, "agents", name), "utf8")]),
-    );
-    assert.deepEqual(after, before);
-    assert.match(fx.notifications[1].message, /Skipped.*worker\.md.*planner\.md.*scout\.md.*reviewer\.md/s);
-  });
-
-  it("/subagents-init rejects invalid arguments without copying anything", async () => {
-    const fake = registerAll();
-    const fx = makeFixture();
-
-    await fake.findCommand("subagents-init")!.handler("somewhere", fx.ctx);
-
-    assert.deepEqual(readdirSync(join(fx.agentDir, "agents")), []);
-    assert.equal(existsSync(join(fx.cwd, ".pi", "agents")), false);
-    assert.deepEqual(fx.notifications, [
-      { message: "Usage: /subagents-init [global|project]", type: "error" },
-    ]);
-  });
-
-  it("/subagents-init autocomplete has exact labels and prefix filtering", () => {
-    const fake = registerAll();
-    const complete = fake.findCommand("subagents-init")!.getArgumentCompletions;
-    const expected = [
-      {
-        value: "global",
-        label: "global",
-        description: "copy example agent defs to ~/.pi/agent/agents",
-      },
-      {
-        value: "project",
-        label: "project",
-        description: "copy example agent defs to .pi/agents",
-      },
-    ];
-
-    assert.deepEqual(complete(""), expected);
-    assert.deepEqual(complete("g"), [expected[0]]);
-    assert.deepEqual(complete("pro"), [expected[1]]);
-    assert.equal(complete("x"), null);
-  });
-
+describe("index tools: agent lookup", () => {
   it("subagent tool rejects an explicitly named missing agent before launch", async () => {
     const fake = registerAll();
     const fx = makeFixture();
@@ -775,45 +647,5 @@ describe("index tools: commands", () => {
 
     assert.equal(result.details.status, "started");
     assert.equal(launchCount, 1);
-  });
-
-  it("/iterate always emits a full-context fork tool call", async () => {
-    const fake = registerAll();
-    const iterate = fake.findCommand("iterate");
-    await iterate!.handler("Fix the bug", makeFakeCtx().ctx);
-
-    assert.equal(fake.sentUser.length, 1);
-    assert.match(fake.sentUser[0], /fork: true/);
-    assert.match(fake.sentUser[0], /name: "Iterate"/);
-    assert.match(fake.sentUser[0], /Fix the bug/);
-  });
-
-  it("/subagent spawns a named agent with the given task", async () => {
-    const fake = registerAll();
-    const fx = makeFixture();
-    writeFileSync(
-      join(fx.agentDir, "agents", "scout.md"),
-      "---\nname: scout\nmodel: anthropic/claude-haiku-4-5\n---\nYou scout.\n",
-    );
-
-    const cmd = fake.findCommand("subagent");
-    await cmd!.handler("scout find the bug", fx.ctx);
-
-    assert.equal(fake.sentUser.length, 1);
-    assert.match(fake.sentUser[0], /agent: "scout"/);
-    assert.match(fake.sentUser[0], /find the bug/);
-  });
-
-  it("/subagent with an unknown agent notifies an error", async () => {
-    const fake = registerAll();
-    makeFixture();
-    const { ctx, notifications } = makeFakeCtx();
-
-    const cmd = fake.findCommand("subagent");
-    await cmd!.handler("nonexistent-agent do stuff", ctx);
-
-    assert.equal(fake.sentUser.length, 0);
-    assert.equal(notifications.length, 1);
-    assert.match(notifications[0].message, /not found/);
   });
 });
