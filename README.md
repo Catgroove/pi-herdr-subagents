@@ -130,32 +130,7 @@ Launch scripts should also `trap '' TSTP`. An argv-launched pane has no parent i
 from which to run `fg`, so Ctrl+Z would otherwise suspend the command and wedge the pane
 permanently.
 
-**Outside herdr** the extension registers nothing at load. At `session_start`, if no other
-extension provides a `subagent` tool, it registers setup-hint stubs that explain how to run pi
-inside herdr (so the model gets a clear answer instead of a missing tool). If another extension
-already provides `subagent` (e.g. pi-interactive-subagents in tmux), it registers nothing and
-the other extension wins cleanly.
-
-## Transition: running side-by-side with pi-interactive-subagents
-
-Tool names are **identical by design**: agent-def `spawning: false` / `deny-tools` frontmatter
-gates the exact names `subagent`, `subagent_resume`, `subagent_interrupt`, `subagents_list`,
-and existing orchestrator prompts reference those names in prose. pi resolves duplicate tool
-names **first-loaded-extension-wins, silently** — so ordering matters:
-
-> **List `pi-herdr-subagents` BEFORE `pi-interactive-subagents` in `packages`.**
-
-Behavior matrix during the transition:
-
-| pi is running… | active provider |
-|---|---|
-| inside a herdr pane | **pi-herdr-subagents** (registers at load, wins the race) |
-| inside tmux/cmux/zellij/wezterm | pi-interactive-subagents (this extension stays silent) |
-| outside any mux | whichever is loaded; ours only adds setup-hint stubs if nothing else provides `subagent` |
-
-If this extension is inside herdr but *lost* the registry race (loaded after another `subagent`
-provider), it emits a visible `session_start` warning telling you to fix the package order —
-it never fails silently.
+**Outside herdr** the extension registers nothing.
 
 No relation to [pi-herdr](https://github.com/ogulcancelik/pi-extensions) (the generic
 user-facing pane tool): no dependency in either direction, no name collisions (`herdr` vs
@@ -199,8 +174,8 @@ Set `PI_HERDR_DIRENV=0` or an explicit `PI_HERDR_LAUNCH_PREFIX` to override.
 Agent definitions in project-local `.pi/agents/*.md` or global `~/.pi/agent/agents/*.md` are read
 with the same frontmatter semantics as pi-interactive-subagents (name, description, tools,
 deny-tools, model, thinking, spawning, auto-exit, interactive, session-mode, systemPromptMode,
-…) — the same defs drive both extensions during the transition. A `subagent_done` /
-`caller_ping` child extension is loaded into every child for the completion handshake.
+…). A `subagent_done` / `caller_ping` child extension is loaded into every child for the
+completion handshake.
 
 ## Lifecycle: every child ends in exactly one honest state
 

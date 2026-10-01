@@ -1,15 +1,12 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
 
 import herdrSubagents, { __test__ } from "../index.ts";
 import { getActiveSubagentCount } from "../src/runtime-state.ts";
 import type { SubagentOutcome } from "../src/watcher.ts";
-
-const INDEX_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "..", "index.ts");
 
 // ── env management ─────────────────────────────────────────────────────────
 // These tests may themselves run inside herdr / a subagent — always set or
@@ -52,17 +49,11 @@ function envInsideHerdr(): void {
 
 // ── fakes ──────────────────────────────────────────────────────────────────
 
-interface FakeToolInfo {
-  name: string;
-  sourceInfo?: { path: string };
-}
-
-function createFakePi(opts?: { allTools?: FakeToolInfo[] }) {
+function createFakePi() {
   const registeredTools: any[] = [];
   const renderers = new Map<string, unknown>();
   const handlers = new Map<string, Function[]>();
   const sent: Array<{ message: any; options: any }> = [];
-  let allTools: FakeToolInfo[] | null = opts?.allTools ?? null;
 
   const api: any = {
     registerTool(tool: any) {
@@ -80,9 +71,8 @@ function createFakePi(opts?: { allTools?: FakeToolInfo[] }) {
     sendMessage(message: any, options: any) {
       sent.push({ message, options });
     },
-    getAllTools(): FakeToolInfo[] {
-      if (allTools) return allTools;
-      return registeredTools.map((t) => ({ name: t.name, sourceInfo: { path: INDEX_PATH } }));
+    getAllTools() {
+      return registeredTools.map((t) => ({ name: t.name }));
     },
     async exec() {
       return { stdout: "", stderr: "", code: 0 };
@@ -94,9 +84,6 @@ function createFakePi(opts?: { allTools?: FakeToolInfo[] }) {
     registeredTools,
     renderers,
     sent,
-    setAllTools(tools: FakeToolInfo[]) {
-      allTools = tools;
-    },
     toolNames(): string[] {
       return registeredTools.map((t) => t.name);
     },
@@ -223,33 +210,6 @@ describe("index: activation guard", () => {
     assert.ok(fake.toolNames().includes("subagent"));
   });
 
-  it("outside herdr: session_start registers setup-hint stubs when no subagent tool exists", async () => {
-    const fake = createFakePi({ allTools: [] });
-    herdrSubagents(fake.api);
-    assert.deepEqual(fake.toolNames(), []);
-
-    const { ctx } = makeFakeCtx();
-    fake.fire("session_start", {}, ctx);
-
-    const stub = fake.findTool("subagent");
-    assert.ok(stub, "expected a subagent setup-hint stub");
-    const result = await stub.execute("t1", { name: "X", task: "y" }, undefined, undefined, ctx);
-    assert.match(result.content[0].text, /herdr/i);
-    assert.equal(result.details.error, "not in herdr");
-  });
-
-  it("outside herdr: stays silent when another extension already provides subagent", () => {
-    const fake = createFakePi({
-      allTools: [{ name: "subagent", sourceInfo: { path: "/other/pi-interactive-subagents/index.ts" } }],
-    });
-    herdrSubagents(fake.api);
-    const { ctx, notifications } = makeFakeCtx();
-    fake.fire("session_start", {}, ctx);
-
-    assert.deepEqual(fake.toolNames(), []);
-    assert.deepEqual(notifications, []);
-  });
-
   it("PI_DENY_TOOLS=subagent suppresses registration inside herdr", () => {
     envInsideHerdr();
     process.env.PI_DENY_TOOLS = "subagent";
@@ -259,40 +219,6 @@ describe("index: activation guard", () => {
     // other spawning tools are gated individually, not as a block
     assert.ok(fake.toolNames().includes("subagent_interrupt"));
     assert.ok(fake.toolNames().includes("subagents_list"));
-  });
-
-  it("inside herdr but lost the registry race → visible session_start warning", () => {
-    envInsideHerdr();
-    __test__.setDeps({ client: makeFakeClient() });
-    const fake = createFakePi();
-    herdrSubagents(fake.api);
-
-    fake.setAllTools([
-      { name: "subagent", sourceInfo: { path: "/other/pi-interactive-subagents/index.ts" } },
-    ]);
-    const { ctx, notifications } = makeFakeCtx();
-    fake.fire("session_start", {}, ctx);
-
-    const warning = notifications.find((n) => n.type === "warning");
-    assert.ok(warning, "expected a visible warning notify");
-    assert.match(warning.message, /pi-herdr-subagents/);
-    assert.match(warning.message, /before/i);
-  });
-
-  it("inside herdr and won the race → no warning", () => {
-    envInsideHerdr();
-    __test__.setDeps({ client: makeFakeClient() });
-    const fake = createFakePi();
-    herdrSubagents(fake.api);
-
-    fake.setAllTools([{ name: "subagent", sourceInfo: { path: INDEX_PATH } }]);
-    const { ctx, notifications } = makeFakeCtx();
-    fake.fire("session_start", {}, ctx);
-
-    assert.deepEqual(
-      notifications.filter((n) => n.type === "warning"),
-      [],
-    );
   });
 
   it("inside herdr with unreachable socket → visible notify from session_start check", async () => {
