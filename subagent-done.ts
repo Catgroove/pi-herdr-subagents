@@ -1,6 +1,5 @@
 /**
  * Extension loaded into every subagent child pi (via `-e <this file>`).
- * - Shows agent identity + available tools as a styled widget above the editor (toggle with Ctrl+J)
  * - Provides a `subagent_done` tool for autonomous agents to self-terminate
  * - Provides a `caller_ping` tool to ask the parent orchestrator for help
  *
@@ -15,7 +14,6 @@
  * Keep this file dependency-light: it loads into EVERY child.
  */
 import type { ContextUsage, ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Box, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { writeFileSync } from "node:fs";
 
@@ -61,13 +59,6 @@ export function shouldAutoExitOnAgentEnd(
   return true;
 }
 
-export function parseDeniedTools(rawValue: string | undefined): string[] {
-  return (rawValue ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-}
-
 export type ExitSidecarData =
   | { type: "done" }
   | { type: "ping"; name: string; message: string };
@@ -87,66 +78,7 @@ export function writeExitSidecar(sessionFile: string, data: ExitSidecarData): vo
 }
 
 export default function (pi: ExtensionAPI) {
-  let toolNames: string[] = [];
-  let denied: string[] = [];
-  let expanded = false;
-
-  // Read subagent identity from env vars (set by parent orchestrator)
-  const subagentName = process.env.PI_SUBAGENT_NAME ?? "";
-  const subagentAgent = process.env.PI_SUBAGENT_AGENT ?? "";
-  const deniedToolsValue = process.env.PI_DENY_TOOLS;
   const autoExit = process.env.PI_SUBAGENT_AUTO_EXIT === "1";
-
-  function renderWidget(ctx: { ui: { setWidget: Function } }) {
-    ctx.ui.setWidget(
-      "subagent-tools",
-      (_tui: any, theme: any) => {
-        const box = new Box(1, 0, (text: string) => theme.bg("toolSuccessBg", text));
-
-        const label = subagentAgent || subagentName;
-        const agentTag = label ? theme.bold(theme.fg("accent", `[${label}]`)) : "";
-
-        if (expanded) {
-          // Expanded: full tool list + denied
-          const countInfo = theme.fg("dim", ` — ${toolNames.length} available`);
-          const hint = theme.fg("muted", "  (Ctrl+J to collapse)");
-
-          const toolList = toolNames
-            .map((name: string) => theme.fg("dim", name))
-            .join(theme.fg("muted", ", "));
-
-          let deniedLine = "";
-          if (denied.length > 0) {
-            const deniedList = denied
-              .map((name: string) => theme.fg("error", name))
-              .join(theme.fg("muted", ", "));
-            deniedLine = "\n" + theme.fg("muted", "denied: ") + deniedList;
-          }
-
-          const content = new Text(
-            `${agentTag}${countInfo}${hint}\n${toolList}${deniedLine}`,
-            0,
-            0,
-          );
-          box.addChild(content);
-        } else {
-          // Collapsed: one-line summary
-          const countInfo = theme.fg("dim", ` — ${toolNames.length} tools`);
-          const deniedInfo =
-            denied.length > 0
-              ? theme.fg("dim", " · ") + theme.fg("error", `${denied.length} denied`)
-              : "";
-          const hint = theme.fg("muted", "  (Ctrl+J to expand)");
-
-          const content = new Text(`${agentTag}${countInfo}${deniedInfo}${hint}`, 0, 0);
-          box.addChild(content);
-        }
-
-        return box;
-      },
-      { placement: "aboveEditor" },
-    );
-  }
 
   let userTookOver = false;
   let agentStarted = false;
@@ -188,15 +120,6 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  // Show widget on session start
-  pi.on("session_start", (_event, ctx) => {
-    const tools = pi.getAllTools();
-    toolNames = tools.map((t) => t.name).sort();
-    denied = parseDeniedTools(deniedToolsValue);
-
-    renderWidget(ctx);
-  });
-
   pi.on("input", () => {
     // Ignore the initial task message that starts an autonomous subagent.
     // Only inputs after the first agent run has started count as user takeover.
@@ -236,15 +159,6 @@ export default function (pi: ExtensionAPI) {
   // Do not overwrite a snapshot already published by another terminal path.
   pi.on("session_shutdown", (_event, ctx) => {
     snapshotContextUsage(ctx, true);
-  });
-
-  // Toggle expand/collapse with Ctrl+J
-  pi.registerShortcut("ctrl+j", {
-    description: "Toggle subagent tools widget",
-    handler: (ctx) => {
-      expanded = !expanded;
-      renderWidget(ctx);
-    },
   });
 
   pi.registerTool({

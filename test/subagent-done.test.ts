@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import {
-  parseDeniedTools,
   shouldAutoExitOnAgentEnd,
   shouldMarkUserTookOver,
   writeExitSidecar,
@@ -92,20 +91,6 @@ describe("subagent-done: shouldAutoExitOnAgentEnd", () => {
   });
 });
 
-describe("subagent-done: parseDeniedTools", () => {
-  it("splits and trims comma-separated names, dropping empties", () => {
-    assert.deepEqual(parseDeniedTools(" subagent , subagent_resume ,,bash "), [
-      "subagent",
-      "subagent_resume",
-      "bash",
-    ]);
-  });
-
-  it("returns an empty list when unset", () => {
-    assert.deepEqual(parseDeniedTools(undefined), []);
-  });
-});
-
 describe("subagent-done: .exit sidecar shapes (cross-extension contract)", () => {
   function makeSessionFile(): string {
     const dir = mkdtempSync(join(tmpdir(), "herdr-done-"));
@@ -185,13 +170,10 @@ describe("subagent-done: subagent_done tool writes sidecar and shuts down", () =
     const fakePi = {
       on: (event: string, handler: Function) => { handlers[event] = handler; },
       registerTool: (tool: any) => { registeredTools[tool.name] = tool; },
-      registerShortcut: () => {},
-      getAllTools: () => [],
     };
     const fakeCtx = {
       shutdown: () => {},
       getContextUsage: () => undefined,
-      ui: { setWidget: () => {} },
     };
 
     const mod = await import("../subagent-done.ts");
@@ -229,8 +211,6 @@ describe("subagent-done: subagent_done tool writes sidecar and shuts down", () =
     const fakePi = {
       on: () => {},
       registerTool: (tool: any) => { registeredTools[tool.name] = tool; },
-      registerShortcut: () => {},
-      getAllTools: () => [],
     };
     const fakeCtx = {
       shutdown: () => {
@@ -239,7 +219,6 @@ describe("subagent-done: subagent_done tool writes sidecar and shuts down", () =
         shutdownCalled = true;
       },
       getContextUsage: () => ({ tokens: 75_000, contextWindow: 200_000, percent: 37.5 }),
-      ui: { setWidget: () => {} },
     };
 
     const mod = await import("../subagent-done.ts");
@@ -286,18 +265,14 @@ describe("subagent-done: user close without subagent_done leaves no sidecar", ()
     const fakePi = {
       on: (event: string, handler: Function) => { handlers[event] = handler; },
       registerTool: () => {},
-      registerShortcut: () => {},
-      getAllTools: () => [],
     };
     const fakeCtx = {
       shutdown: () => { shutdownCalled = true; },
-      ui: { setWidget: () => {} },
     };
 
     const mod = await import("../subagent-done.ts");
     mod.default(fakePi as any);
 
-    handlers.session_start?.({}, fakeCtx);
     handlers.agent_start?.();
     // User aborts — should NOT auto-exit, no sidecar
     handlers.agent_end?.(
@@ -336,13 +311,10 @@ describe("subagent-done: session_shutdown context usage fallback", () => {
     const fakePi = {
       on: (event: string, handler: Function) => { handlers[event] = handler; },
       registerTool: () => {},
-      registerShortcut: () => {},
-      getAllTools: () => [],
     };
     let usage = { tokens: 10, contextWindow: 100, percent: 10 };
     const fakeCtx = {
       getContextUsage: () => usage,
-      ui: { setWidget: () => {} },
     };
 
     const mod = await import("../subagent-done.ts");
@@ -378,8 +350,6 @@ describe("subagent-done: session_shutdown context usage fallback", () => {
     const fakePi = {
       on: (event: string, handler: Function) => { handlers[event] = handler; },
       registerTool: () => {},
-      registerShortcut: () => {},
-      getAllTools: () => [],
     };
     const mod = await import("../subagent-done.ts");
     mod.default(fakePi as any);
@@ -414,19 +384,14 @@ describe("subagent-done: agent_end writes .exit sidecar on clean auto-exit", () 
     const fakePi = {
       on: (event: string, handler: Function) => { handlers[event] = handler; },
       registerTool: () => {},
-      registerShortcut: () => {},
-      getAllTools: () => [],
     };
     const fakeCtx = {
       shutdown: () => { shutdownCalled = true; },
-      ui: { setWidget: () => {} },
     };
 
     const mod = await import("../subagent-done.ts");
     mod.default(fakePi as any);
 
-    // Simulate session_start to initialize
-    handlers.session_start?.({}, fakeCtx);
     // Simulate agent_start so agentStarted = true
     handlers.agent_start?.();
     // Simulate agent_end with a clean completion
@@ -458,18 +423,14 @@ describe("subagent-done: agent_end writes .exit sidecar on clean auto-exit", () 
     const fakePi = {
       on: (event: string, handler: Function) => { handlers[event] = handler; },
       registerTool: () => {},
-      registerShortcut: () => {},
-      getAllTools: () => [],
     };
     const fakeCtx = {
       shutdown: () => { shutdownCalled = true; },
-      ui: { setWidget: () => {} },
     };
 
     const mod = await import("../subagent-done.ts");
     mod.default(fakePi as any);
 
-    handlers.session_start?.({}, fakeCtx);
     handlers.agent_start?.();
     handlers.agent_end?.(
       { messages: [{ role: "assistant", stopReason: "error", errorMessage: "Request timed out." }] },
@@ -502,12 +463,9 @@ describe("subagent-done: agent_end writes .exit sidecar on clean auto-exit", () 
     const fakePi = {
       on: (event: string, handler: Function) => { handlers[event] = handler; },
       registerTool: () => {},
-      registerShortcut: () => {},
-      getAllTools: () => [],
     };
     const fakeCtx = {
       shutdown: () => { shutdownCalled = true; },
-      ui: { setWidget: () => {} },
     };
 
     const mod = await import("../subagent-done.ts");
