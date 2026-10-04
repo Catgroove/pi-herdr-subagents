@@ -33,6 +33,7 @@ import {
   getAgentConfigDir,
   getDefaultSessionDirFor,
   resolveDenyTools,
+  resolveEffectiveAutoExit,
   resolveEffectiveInteractive,
   resolveLaunchBehavior,
   resolveSubagentPaths,
@@ -50,6 +51,7 @@ export interface SubagentLaunchParams {
   systemPrompt?: string;
   fork?: boolean;
   interactive?: boolean;
+  autoExit?: boolean;
 }
 
 export interface LaunchPlanContext {
@@ -314,7 +316,7 @@ export function buildLaunchPlan(
   const effectiveSkills = params.skills ?? agentDefs?.skills;
   const effectiveThinking = agentDefs?.thinking;
   const interactive = resolveEffectiveInteractive(params, agentDefs);
-  const autoExit = agentDefs?.autoExit ?? false;
+  const autoExit = resolveEffectiveAutoExit(params, agentDefs);
 
   const artifactDir = getArtifactDir(ctx.sessionDir, ctx.sessionId);
   const { effectiveCwd, localAgentDir, effectiveAgentDir } = resolveSubagentPaths(

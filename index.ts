@@ -427,7 +427,13 @@ const SubagentParams = Type.Object({
   interactive: Type.Optional(
     Type.Boolean({
       description:
-        "Mark the subagent as interactive (long-running, user drives the conversation in its own pane). If omitted, falls back to the agent's `interactive` frontmatter, otherwise the inverse of `auto-exit`.",
+        "Mark the subagent as interactive (long-running, user drives the conversation in its own pane). If omitted, falls back to the agent's `interactive` frontmatter, otherwise the inverse of `autoExit`.",
+    }),
+  ),
+  autoExit: Type.Optional(
+    Type.Boolean({
+      description:
+        "Whether the subagent session should automatically exit after completing its response. If omitted, falls back to the agent's `auto-exit` frontmatter, otherwise true unless `interactive` is set.",
     }),
   ),
 });

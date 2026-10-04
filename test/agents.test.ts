@@ -15,6 +15,7 @@ import {
   loadAgentDefaults,
   parseAgentDefinition,
   resolveDenyTools,
+  resolveEffectiveAutoExit,
   resolveEffectiveInteractive,
   resolveEffectiveSessionMode,
   resolveLaunchBehavior,
@@ -366,15 +367,53 @@ describe("agents.ts", () => {
     });
   });
 
+  describe("resolveEffectiveAutoExit", () => {
+    it("defaults to auto-exit without agent defs or frontmatter", () => {
+      assert.equal(resolveEffectiveAutoExit({ name: "A", task: "T" }, null), true);
+      assert.equal(resolveEffectiveAutoExit({ name: "A", task: "T" }, {}), true);
+    });
+
+    it("does not auto-exit explicitly interactive subagents by default", () => {
+      assert.equal(resolveEffectiveAutoExit({ name: "A", task: "T", interactive: true }, null), false);
+      assert.equal(resolveEffectiveAutoExit({ name: "A", task: "T" }, { interactive: true }), false);
+    });
+
+    it("honors frontmatter over the default", () => {
+      assert.equal(resolveEffectiveAutoExit({ name: "A", task: "T" }, { autoExit: false }), false);
+      assert.equal(
+        resolveEffectiveAutoExit({ name: "A", task: "T" }, { autoExit: true, interactive: true }),
+        true,
+      );
+    });
+
+    it("honors the explicit tool parameter over all else", () => {
+      assert.equal(
+        resolveEffectiveAutoExit({ name: "A", task: "T", autoExit: false }, { autoExit: true }),
+        false,
+      );
+      assert.equal(
+        resolveEffectiveAutoExit(
+          { name: "A", task: "T", autoExit: true, interactive: true },
+          { autoExit: false },
+        ),
+        true,
+      );
+    });
+  });
+
   describe("resolveEffectiveInteractive", () => {
     it("defaults to the inverse of auto-exit", () => {
       // Autonomous agents (auto-exit: true) are NOT interactive — parent gets stall pings.
       assert.equal(resolveEffectiveInteractive({ name: "A", task: "T" }, { autoExit: true }), false);
       // Agents without auto-exit ARE interactive — parent does not receive status transition pings.
       assert.equal(resolveEffectiveInteractive({ name: "A", task: "T" }, { autoExit: false }), true);
-      assert.equal(resolveEffectiveInteractive({ name: "A", task: "T" }, {}), true);
-      // Bare spawn with no agent defs (e.g. /iterate fork) is interactive by default.
-      assert.equal(resolveEffectiveInteractive({ name: "A", task: "T" }, null), true);
+      assert.equal(
+        resolveEffectiveInteractive({ name: "A", task: "T", autoExit: false }, null),
+        true,
+      );
+      // Bare spawn with no agent defs auto-exits, so it is not interactive.
+      assert.equal(resolveEffectiveInteractive({ name: "A", task: "T" }, {}), false);
+      assert.equal(resolveEffectiveInteractive({ name: "A", task: "T" }, null), false);
     });
 
     it("honors explicit frontmatter over the auto-exit default", () => {

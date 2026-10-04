@@ -144,6 +144,10 @@ deny-tools, model, thinking, spawning, auto-exit, interactive, session-mode, sys
 …). A `subagent_done` / `caller_ping` child extension is loaded into every child for the
 completion handshake.
 
+Children auto-exit when their turn ends cleanly. Pass `autoExit: false` or `interactive: true`
+(or set `auto-exit: false` / `interactive: true` in frontmatter) to keep the pane open until the
+child calls `subagent_done` or the user quits.
+
 ## Lifecycle: every child ends in exactly one honest state
 
 The watcher classifies each child from socket events + sidecar files. There is **no path to an
@@ -151,7 +155,7 @@ eternal "stalled" zombie** — every row below terminates the running entry with
 
 | What happened | Steer you get |
 |---|---|
-| child called `subagent_done` | `completed` + summary (last assistant message) |
+| child auto-exited or called `subagent_done` | `completed` + summary (last assistant message) |
 | child called `caller_ping` | `subagent_ping` + the child's question + session path |
 | user drove the child and quit pi without `subagent_done` | distinct honest phrasing: *"closed by user, no subagent_done"* + last message + session path |
 | child exited nonzero within the startup window (e.g. bad `--model`) | `failed to launch (exit code N)` + captured pane tail + pane id + launch script path; pane held open for post-mortem |

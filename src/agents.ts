@@ -24,6 +24,7 @@ export interface SubagentSpawnParams {
   cwd?: string;
   fork?: boolean;
   interactive?: boolean;
+  autoExit?: boolean;
 }
 
 export interface AgentDefaults {
@@ -225,20 +226,35 @@ export function resolveLaunchBehavior(
 }
 
 /**
+ * Decide whether a subagent shuts down when its agent turn ends cleanly.
+ *
+ * Resolution order:
+ *   1. Explicit `autoExit` tool parameter wins.
+ *   2. Explicit `auto-exit` frontmatter field on the agent.
+ *   3. Default: auto-exit unless the subagent is explicitly interactive.
+ *
+ * Auto-exit is the default because the alternative relies on the model
+ * calling `subagent_done`; models that skip it strand the pane and the parent
+ * never receives a result.
+ */
+export function resolveEffectiveAutoExit(
+  params: SubagentSpawnParams,
+  agentDefs: AgentDefaults | null,
+): boolean {
+  if (params.autoExit != null) return params.autoExit;
+  if (agentDefs?.autoExit != null) return agentDefs.autoExit;
+  return !(params.interactive ?? agentDefs?.interactive ?? false);
+}
+
+/**
  * Decide whether a subagent is interactive (user-driven, long-running).
  *
  * Resolution order:
  *   1. Explicit `interactive` tool parameter wins.
  *   2. Explicit `interactive` frontmatter field on the agent.
- *   3. Default: the inverse of `auto-exit`. Agents that auto-exit are
- *      autonomous (scout, worker, reviewer) and the parent session should be
- *      woken on stall/recovery transitions. Agents that don't auto-exit are
- *      driven by the user in their own pane (planner, iterate/fork) and
- *      stall pings are noise.
- *
- * When no agent defs exist at all (bare `subagent({ name, task })` call,
- * typical for `/iterate` with `fork: true`), `autoExit` is undefined and the
- * subagent is treated as interactive — matching the intent of iterate.
+ *   3. Default: the inverse of the effective auto-exit. Agents that auto-exit
+ *      are autonomous (scout, worker, reviewer); agents that don't are driven
+ *      by the user in their own pane (planner).
  */
 export function resolveEffectiveInteractive(
   params: SubagentSpawnParams,
@@ -246,7 +262,7 @@ export function resolveEffectiveInteractive(
 ): boolean {
   if (params.interactive != null) return params.interactive;
   if (agentDefs?.interactive != null) return agentDefs.interactive;
-  return !(agentDefs?.autoExit ?? false);
+  return !resolveEffectiveAutoExit(params, agentDefs);
 }
 
 export function loadAgentDefaults(agentName: string): AgentDefaults | null {
