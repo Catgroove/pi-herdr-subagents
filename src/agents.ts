@@ -24,6 +24,7 @@ export interface SubagentSpawnParams {
   cwd?: string;
   fork?: boolean;
   interactive?: boolean;
+  autoExit?: boolean;
 }
 
 export interface AgentDefaults {
@@ -225,14 +226,37 @@ export function resolveLaunchBehavior(
 }
 
 /**
+ * Decide whether a subagent shuts down when its agent turn ends cleanly.
+ *
+ * Resolution order:
+ *   1. Explicit `autoExit` tool parameter wins.
+ *   2. The inverse of explicit `interactive` tool parameter or frontmatter.
+ *   3. Explicit `auto-exit` frontmatter field on the agent.
+ *   4. Default: auto-exit.
+ *
+ * Auto-exit is the default because the alternative relies on the model
+ * calling `subagent_done`; models that skip it strand the pane and the parent
+ * never receives a result.
+ */
+export function resolveEffectiveAutoExit(
+  params: SubagentSpawnParams,
+  agentDefs: AgentDefaults | null,
+): boolean {
+  if (params.autoExit != null) return params.autoExit;
+  const interactive = params.interactive ?? agentDefs?.interactive;
+  if (interactive != null) return !interactive;
+  return agentDefs?.autoExit ?? true;
+}
+
+/**
  * Decide whether a subagent is interactive (user-driven, long-running).
  *
  * Resolution order:
  *   1. Explicit `interactive` tool parameter wins.
  *   2. Explicit `interactive` frontmatter field on the agent.
- *   3. The inverse of explicit `auto-exit` frontmatter.
- *   4. Default: autonomous. Long-running, user-driven sessions must opt in
- *      with `interactive: true` or `auto-exit: false`.
+ *   3. Default: the inverse of the effective auto-exit. Long-running,
+ *      user-driven sessions must opt in with `interactive: true` or
+ *      `auto-exit: false`.
  */
 export function resolveEffectiveInteractive(
   params: SubagentSpawnParams,
@@ -240,7 +264,7 @@ export function resolveEffectiveInteractive(
 ): boolean {
   if (params.interactive != null) return params.interactive;
   if (agentDefs?.interactive != null) return agentDefs.interactive;
-  return !(agentDefs?.autoExit ?? true);
+  return !resolveEffectiveAutoExit(params, agentDefs);
 }
 
 export function loadAgentDefaults(agentName: string): AgentDefaults | null {

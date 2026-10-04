@@ -143,9 +143,18 @@ describe("launch plan: curated env exports", () => {
 
   it("enables auto-exit without agent defs and omits PI_SUBAGENT_AGENT", () => {
     const fx = makeFixture();
-    const script = scriptOf(plan(fx));
+    const p = plan(fx);
+    const script = scriptOf(p);
+    assert.equal(p.autoExit, true);
     assert.ok(script.includes("export PI_SUBAGENT_AUTO_EXIT=1"));
     assert.ok(!script.includes("PI_SUBAGENT_AGENT="));
+  });
+
+  it("omits PI_SUBAGENT_AUTO_EXIT when the autoExit parameter is false", () => {
+    const fx = makeFixture();
+    const p = plan(fx, { autoExit: false }, { autoExit: true });
+    assert.equal(p.autoExit, false);
+    assert.ok(!scriptOf(p).includes("PI_SUBAGENT_AUTO_EXIT"));
   });
 
   it("local .pi/agent wins for PI_CODING_AGENT_DIR", () => {

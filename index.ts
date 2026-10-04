@@ -427,7 +427,13 @@ const SubagentParams = Type.Object({
   interactive: Type.Optional(
     Type.Boolean({
       description:
-        "Keep the subagent open for user interaction instead of automatically exiting after a clean reply. If omitted, falls back to the agent's `interactive` frontmatter, then the inverse of explicit `auto-exit` frontmatter. Defaults to false (autonomous).",
+        "Keep the subagent open for user interaction instead of automatically exiting after a clean reply. If omitted, falls back to the agent's `interactive` frontmatter, otherwise the inverse of effective `autoExit`. Defaults to false (autonomous).",
+    }),
+  ),
+  autoExit: Type.Optional(
+    Type.Boolean({
+      description:
+        "Whether the subagent session should automatically exit after completing its response. This parameter overrides `interactive`. If omitted, uses the inverse of explicit `interactive` parameter or frontmatter, then the agent's `auto-exit` frontmatter, otherwise true.",
     }),
   ),
 });
