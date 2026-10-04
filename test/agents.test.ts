@@ -370,11 +370,11 @@ describe("agents.ts", () => {
     it("defaults to the inverse of auto-exit", () => {
       // Autonomous agents (auto-exit: true) are NOT interactive — parent gets stall pings.
       assert.equal(resolveEffectiveInteractive({ name: "A", task: "T" }, { autoExit: true }), false);
-      // Agents without auto-exit ARE interactive — parent does not receive status transition pings.
+      // Explicitly disabling auto-exit keeps the agent interactive.
       assert.equal(resolveEffectiveInteractive({ name: "A", task: "T" }, { autoExit: false }), true);
-      assert.equal(resolveEffectiveInteractive({ name: "A", task: "T" }, {}), true);
-      // Bare spawn with no agent defs (e.g. /iterate fork) is interactive by default.
-      assert.equal(resolveEffectiveInteractive({ name: "A", task: "T" }, null), true);
+      // Both named and bare launches default to autonomous.
+      assert.equal(resolveEffectiveInteractive({ name: "A", task: "T" }, {}), false);
+      assert.equal(resolveEffectiveInteractive({ name: "A", task: "T" }, null), false);
     });
 
     it("honors explicit frontmatter over the auto-exit default", () => {

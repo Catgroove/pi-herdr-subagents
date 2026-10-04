@@ -201,10 +201,10 @@ describe("launch plan: curated env exports", () => {
     assert.ok(!script.includes("parents-own-id"), "orchestrator's own PI_SUBAGENT_ID must not leak");
   });
 
-  it("omits PI_SUBAGENT_AUTO_EXIT and PI_SUBAGENT_AGENT without agent defs", () => {
+  it("enables auto-exit without agent defs and omits PI_SUBAGENT_AGENT", () => {
     const fx = makeFixture();
     const script = scriptOf(plan(fx));
-    assert.ok(!script.includes("PI_SUBAGENT_AUTO_EXIT"));
+    assert.ok(script.includes("export PI_SUBAGENT_AUTO_EXIT=1"));
     assert.ok(!script.includes("PI_SUBAGENT_AGENT="));
   });
 
@@ -221,6 +221,41 @@ describe("launch plan: curated env exports", () => {
     const script = scriptOf(plan(fx, { cwd: fx.cwd }));
     assert.ok(script.includes(`export PI_CODING_AGENT_DIR=${shellEscape(fx.agentDir)}`));
   });
+});
+
+describe("launch plan: completion behavior", () => {
+  const cases: Array<{
+    name: string;
+    params: Partial<SubagentLaunchParams>;
+    defs: AgentDefaults | null;
+    interactive: boolean;
+  }> = [
+    { name: "bare launch defaults to autonomous", params: {}, defs: null, interactive: false },
+    { name: "named launch defaults to autonomous", params: { agent: "worker" }, defs: {}, interactive: false },
+    { name: "fork defaults to autonomous", params: { fork: true }, defs: null, interactive: false },
+    { name: "explicit interactive launch stays open", params: { interactive: true }, defs: null, interactive: true },
+    { name: "auto-exit frontmatter enables autonomous completion", params: {}, defs: { autoExit: true }, interactive: false },
+    { name: "disabled auto-exit keeps the session open", params: {}, defs: { autoExit: false }, interactive: true },
+    { name: "interactive frontmatter overrides auto-exit", params: {}, defs: { interactive: true, autoExit: true }, interactive: true },
+    { name: "autonomous frontmatter overrides disabled auto-exit", params: {}, defs: { interactive: false, autoExit: false }, interactive: false },
+    { name: "interactive parameter overrides autonomous frontmatter", params: { interactive: true }, defs: { interactive: false, autoExit: true }, interactive: true },
+    { name: "autonomous parameter overrides interactive frontmatter", params: { interactive: false }, defs: { interactive: true, autoExit: false }, interactive: false },
+  ];
+
+  for (const c of cases) {
+    it(c.name, () => {
+      const fx = makeFixture();
+      const p = plan(fx, c.params, c.defs);
+      assert.equal(p.interactive, c.interactive);
+      assert.equal(p.autoExit, !c.interactive);
+      assert.equal(scriptOf(p).includes("export PI_SUBAGENT_AUTO_EXIT=1"), !c.interactive);
+      if (p.taskArtifactFile) {
+        const task = p.files.find((f) => f.path === p.taskArtifactFile)!;
+        assert.equal(task.content.includes("Complete your task autonomously."), !c.interactive);
+        assert.equal(task.content.includes("call the subagent_done tool"), c.interactive);
+      }
+    });
+  }
 });
 
 describe("launch plan: exitcode sidecar and hold-open", () => {
