@@ -93,66 +93,6 @@ function scriptOf(p: LaunchPlan): string {
   return file.content;
 }
 
-describe("launch plan: env wrapping (direnv / prefix overrides)", () => {
-  it("wraps with direnv exec when cwd has .envrc", () => {
-    const fx = makeFixture();
-    writeFileSync(join(fx.cwd, ".envrc"), "use devenv\n");
-    const script = scriptOf(plan(fx, { cwd: fx.cwd }));
-    assert.ok(
-      script.includes(`direnv exec ${shellEscape(fx.cwd)} ${shellEscape(fx.piBin)}`),
-      `expected direnv wrap in:\n${script}`,
-    );
-  });
-
-  it("wraps with direnv exec when an ancestor dir has .envrc", () => {
-    const fx = makeFixture();
-    writeFileSync(join(fx.root, ".envrc"), "use devenv\n");
-    const nested = join(fx.cwd, "sub", "dir");
-    mkdirSync(nested, { recursive: true });
-    const script = scriptOf(plan(fx, { cwd: nested }));
-    assert.ok(script.includes(`direnv exec ${shellEscape(nested)} ${shellEscape(fx.piBin)}`));
-  });
-
-  it("does not wrap without .envrc", () => {
-    const fx = makeFixture();
-    const script = scriptOf(plan(fx, { cwd: fx.cwd }));
-    assert.ok(!script.includes("direnv"), `unexpected direnv in:\n${script}`);
-  });
-
-  it("PI_HERDR_DIRENV=0 disables autodetect", () => {
-    const fx = makeFixture();
-    writeFileSync(join(fx.cwd, ".envrc"), "use devenv\n");
-    fx.env.PI_HERDR_DIRENV = "0";
-    const script = scriptOf(plan(fx, { cwd: fx.cwd }));
-    assert.ok(!script.includes("direnv"));
-  });
-
-  it("PI_HERDR_LAUNCH_PREFIX overrides autodetect (plain prefix)", () => {
-    const fx = makeFixture();
-    writeFileSync(join(fx.cwd, ".envrc"), "use devenv\n");
-    fx.env.PI_HERDR_LAUNCH_PREFIX = "mise exec --";
-    const script = scriptOf(plan(fx, { cwd: fx.cwd }));
-    assert.ok(script.includes(`mise exec -- ${shellEscape(fx.piBin)}`));
-    assert.ok(!script.includes("direnv"));
-  });
-
-  it("PI_HERDR_LAUNCH_PREFIX interpolates {cwd}", () => {
-    const fx = makeFixture();
-    fx.env.PI_HERDR_LAUNCH_PREFIX = "nix develop {cwd} -c";
-    const script = scriptOf(plan(fx, { cwd: fx.cwd }));
-    assert.ok(script.includes(`nix develop ${shellEscape(fx.cwd)} -c ${shellEscape(fx.piBin)}`));
-  });
-
-  it("empty PI_HERDR_LAUNCH_PREFIX disables wrapping even with .envrc", () => {
-    const fx = makeFixture();
-    writeFileSync(join(fx.cwd, ".envrc"), "use devenv\n");
-    fx.env.PI_HERDR_LAUNCH_PREFIX = "";
-    const script = scriptOf(plan(fx, { cwd: fx.cwd }));
-    assert.ok(!script.includes("direnv"));
-    assert.ok(script.includes(`\n${shellEscape(fx.piBin)} `), "pi invoked unwrapped");
-  });
-});
-
 describe("launch plan: pi binary resolution", () => {
   it("resolves an absolute pi from PATH by default (never bare `pi`)", () => {
     const fx = makeFixture();
@@ -442,7 +382,6 @@ describe("launch plan: structure", () => {
 
   it("generated script passes bash -n", () => {
     const fx = makeFixture();
-    writeFileSync(join(fx.cwd, ".envrc"), "use devenv\n");
     const p = plan(fx, { cwd: fx.cwd, agent: "worker" }, {
       autoExit: true,
       tools: "read,bash",

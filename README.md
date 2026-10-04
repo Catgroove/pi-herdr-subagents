@@ -89,9 +89,10 @@ The `subagent`, `subagent_resume`, `subagent_interrupt`, and `subagents_list` to
 automatically.
 
 The plugin dispatcher runs **non-interactive, non-login bash**. The generated launch script uses
-absolute paths for binaries; shell rc files are not loaded and direnv is applied explicitly (see
-below). That clean startup is intentional: it avoids typing a command into a pane whose
-interactive shell may still be running direnv initialization.
+absolute paths for binaries and exports the **orchestrator's PATH** plus curated `PI_SUBAGENT_*`
+vars (never a full env dump); shell rc files are not loaded. That clean startup is intentional:
+it avoids typing a command into a pane whose interactive shell may still be running direnv
+initialization.
 
 The launch script also runs `trap '' TSTP`. An argv-launched pane has no parent interactive
 shell from which to run `fg`, so Ctrl+Z would otherwise suspend the command and wedge the pane
@@ -109,25 +110,9 @@ All configuration is via environment variables (set globally, or per-project via
 
 | Variable | Default | Effect |
 |---|---|---|
-| `PI_HERDR_LAUNCH_PREFIX` | *(unset)* | Template for the command wrapping the child pi invocation; `{cwd}` is interpolated shell-escaped. **If defined (even empty) it replaces direnv autodetection**; empty string disables wrapping entirely. Examples: `direnv exec {cwd}` (the autodetect default), `mise exec --`, `nix develop {cwd} -c`. |
 | `PI_HERDR_PI_BIN` | first executable `pi` on `PATH` | Absolute path of the pi binary to launch children with (e.g. `~/.local/bin/pi`). |
-| `PI_HERDR_DIRENV` | *(unset)* | Set to `0` to disable the `direnv exec` autodetect (see below). |
 | `PI_HERDR_HOLD_OPEN_SECS` | `15` | Startup-crash window: if the child exits nonzero within this many seconds, the pane is held open for post-mortem (`0` disables). |
 | `HERDR_BIN` | `herdr` on `PATH` | herdr binary override. |
-
-### direnv / devenv / varlock repos
-
-Spawning into a repo whose environment lives behind direnv (devenv, nix, varlock-managed
-secrets) is a first-class case — it is exactly where typed-launch muxes fail. The generated
-launch script exports the **orchestrator's PATH** plus curated `PI_SUBAGENT_*` vars (never a
-full env dump), and when the child's effective cwd (or an ancestor, up to `$HOME`) has an
-`.envrc`, the pi invocation is wrapped in `direnv exec '<cwd>'`. That wrap materializes the
-devenv environment — node, pnpm, postgres, project env vars — before pi starts. If your `pi`
-is itself a wrapper that needs in-env tools (e.g. varlock for 1Password-backed secrets), it
-runs inside that environment and just works; the extension needs zero knowledge of it. The
-whole chain — launch script → `direnv exec` → devenv PATH → pi wrapper → varlock — is covered
-by an integration test against a real devenv checkout (`test/integration/direnv-env.test.ts`).
-Set `PI_HERDR_DIRENV=0` or an explicit `PI_HERDR_LAUNCH_PREFIX` to override.
 
 ## Tools
 
@@ -185,7 +170,7 @@ artifacts/<session-id>/
 ├── context/<name>-<ts>.md            # task handoff file (child's initial @-message)
 ├── context/<name>-sysprompt-<ts>.md  # system prompt file (when the agent def provides one)
 ├── subagent-scripts/<name>-<id>.sh   # the generated launch script (the single source of truth
-│                                     #   for env exports, direnv wrap, pi argv)
+│                                     #   for env exports and pi argv)
 └── subagent-resume/<name>-<ts>.md    # resume follow-up messages
 ```
 

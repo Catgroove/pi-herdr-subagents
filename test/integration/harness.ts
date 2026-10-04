@@ -412,9 +412,7 @@ export async function createTestSession(): Promise<TestSession> {
   // roots rather than touching the developer's plugin registry.
   // Use the short conventional Unix temp root because macOS's `tmpdir()` is a
   // long /var/folders path that can overflow Herdr's Unix socket path limit.
-  // Resolve it physically (/tmp → /private/tmp on macOS): direnv keys its allow
-  // records by the PHYSICAL .envrc path, so a logical path reports "blocked"
-  // even after `direnv allow` (live-found).
+  // Resolve it physically (/tmp → /private/tmp on macOS).
   const tmpRoot = process.platform === "win32" ? tmpdir() : "/tmp";
   const tmpDir = realpathSync(mkdtempSync(join(tmpRoot, "pi-herdr-itest-")));
   const herdrConfigHome = join(tmpDir, "herdr-config");
@@ -582,8 +580,6 @@ export async function startOrchestrator(
     prompt: string;
     name?: string;
     cwd?: string;
-    /** Extra env exported in the launch script (e.g. PI_HERDR_DIRENV). */
-    env?: Record<string, string>;
     model?: string;
   },
 ): Promise<Orchestrator> {
@@ -594,10 +590,6 @@ export async function startOrchestrator(
   const sessionFile = join(ts.tmpDir, "orch-sessions", `${name}.jsonl`);
   mkdirSync(dirname(sessionFile), { recursive: true });
 
-  const extraExports = Object.entries(opts.env ?? {}).map(
-    ([key, value]) => `export ${key}=${shellEscape(value)}`,
-  );
-
   const script = [
     "#!/usr/bin/env bash",
     `# Orchestrator launch script (integration harness) — ${name}`,
@@ -605,12 +597,11 @@ export async function startOrchestrator(
     // developer ran the tests; the orchestrator must start clean.
     "unset PI_SUBAGENT_NAME PI_SUBAGENT_AGENT PI_SUBAGENT_ID PI_SUBAGENT_SESSION \\",
     "  PI_SUBAGENT_AUTO_EXIT PI_SUBAGENT_PANE PI_DENY_TOOLS \\",
-    "  PI_HERDR_LAUNCH_PREFIX PI_HERDR_DIRENV PI_HERDR_HOLD_OPEN_SECS",
+    "  PI_HERDR_HOLD_OPEN_SECS",
     `export PATH=${shellEscape(process.env.PATH ?? "")}`,
     `export PI_CODING_AGENT_DIR=${shellEscape(ts.configDir)}`,
     `export PI_HERDR_PI_BIN=${shellEscape(piBin)}`,
     `export HERDR_BIN=${shellEscape(HERDR_BIN)}`,
-    ...extraExports,
     `cd ${shellEscape(cwd)}`,
     [
       shellEscape(piBin),

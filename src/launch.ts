@@ -9,12 +9,8 @@
 // - The generated wrapper script is the single place env/wrapping/exit-capture
 //   happens. Herdr passes its path to the fixed plugin dispatcher — no shell
 //   typing, launch race, or verify/retry machinery.
-// - Env correctness for direnv/devenv repos: the script exports the
-//   orchestrator's PATH + curated PI_SUBAGENT_* vars (never a full env dump),
-//   and wraps the pi invocation in `direnv exec '<cwd>'` when the target cwd
-//   (or an ancestor) has an .envrc. Overrides: PI_HERDR_LAUNCH_PREFIX
-//   (template, `{cwd}` interpolated, empty string disables), PI_HERDR_PI_BIN,
-//   PI_HERDR_DIRENV=0.
+// - The script exports the orchestrator's PATH + curated PI_SUBAGENT_* vars
+//   (never a full env dump) and runs pi directly. Override: PI_HERDR_PI_BIN.
 // - Exit code via `<sessionFile>.exitcode` sidecar (pane.exited carries no exit
 //   code and pane records vanish on exit). On startup crash (exit ≠ 0 within
 //   PI_HERDR_HOLD_OPEN_SECS, default 15) the script holds the pane open for
@@ -24,7 +20,6 @@
 // conventions ported from pi-interactive-subagents (MIT, HazAT)
 // pi-extension/subagents/{index.ts,cmux.ts} @ fix/launch-verify-retry.
 import { accessSync, constants, existsSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -191,19 +186,6 @@ function safeName(name: string): string {
   );
 }
 
-/** Walk up from cwd looking for .envrc (direnv semantics). Stops at $HOME or filesystem root. */
-function hasEnvrc(cwd: string): boolean {
-  const home = homedir();
-  let dir = cwd;
-  for (;;) {
-    if (existsSync(join(dir, ".envrc"))) return true;
-    if (dir === home) return false;
-    const parent = dirname(dir);
-    if (parent === dir) return false;
-    dir = parent;
-  }
-}
-
 /** Default pi binary resolution: first executable `pi` on env.PATH. Must be absolute. */
 function defaultResolvePiBin(env: Record<string, string | undefined>): string {
   for (const dir of (env.PATH ?? "").split(":")) {
@@ -222,23 +204,6 @@ function defaultResolvePiBin(env: Record<string, string | undefined>): string {
   );
 }
 
-/**
- * Resolve the launch-command wrapper prefix (raw shell text, "" = none).
- *
- * PI_HERDR_LAUNCH_PREFIX (if defined, even empty) replaces autodetection;
- * `{cwd}` is interpolated shell-escaped. Otherwise `direnv exec '<cwd>'` when
- * the effective cwd has an .envrc (disable with PI_HERDR_DIRENV=0).
- */
-function resolveLaunchPrefix(env: Record<string, string | undefined>, cwd: string): string {
-  const template = env.PI_HERDR_LAUNCH_PREFIX;
-  if (template != null) {
-    return template.replaceAll("{cwd}", shellEscape(cwd)).trim();
-  }
-  if (env.PI_HERDR_DIRENV === "0") return "";
-  if (hasEnvrc(cwd)) return `direnv exec ${shellEscape(cwd)}`;
-  return "";
-}
-
 function resolveHoldOpenSecs(env: Record<string, string | undefined>): number {
   const raw = env.PI_HERDR_HOLD_OPEN_SECS?.trim();
   const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
@@ -247,7 +212,7 @@ function resolveHoldOpenSecs(env: Record<string, string | undefined>): number {
 
 /**
  * Assemble the wrapper-script body shared by spawn and resume launches:
- * curated exports → cd → (prefix-wrapped) pi invocation → exitcode sidecar →
+ * curated exports → cd → pi invocation → exitcode sidecar →
  * startup-crash hold-open → exit passthrough.
  */
 function buildWrapperScript(opts: {
@@ -258,10 +223,8 @@ function buildWrapperScript(opts: {
   piArgv: string[];
   sessionFile: string;
 }): { content: string; holdOpenSecs: number } {
-  const launchPrefix = resolveLaunchPrefix(opts.env, opts.cwd);
   const holdOpenSecs = resolveHoldOpenSecs(opts.env);
-  const piCommand =
-    (launchPrefix ? `${launchPrefix} ` : "") + opts.piArgv.map((arg) => shellEscape(arg)).join(" ");
+  const piCommand = opts.piArgv.map((arg) => shellEscape(arg)).join(" ");
 
   const scriptLines = [
     "#!/usr/bin/env bash",
@@ -523,7 +486,7 @@ export interface ResumeLaunchPlan {
 /**
  * Plan a resume launch: pi --session <existing path> -e subagent-done.ts,
  * plus an optional @<artifact> follow-up message. Same wrapper-script
- * machinery (curated env, direnv wrap, exitcode sidecar, hold-open) as
+ * machinery (curated env, exitcode sidecar, hold-open) as
  * buildLaunchPlan; the pane runs in the orchestrator's cwd.
  *
  * NOTE: the executor must rmSync <sessionPath>.exit and <sessionPath>.exitcode

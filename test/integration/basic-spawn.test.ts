@@ -1,7 +1,6 @@
 /**
  * Smoke test — the core loop end-to-end against a real isolated herdr session
- * with real pi children (ISC-1 core, minus the devenv env chain which lives in
- * direnv-env.test.ts).
+ * with real pi children (ISC-1 core).
  *
  * spawn → herdr pane runs the child pi directly (argv) → task via artifact
  * file → child writes marker + calls subagent_done → orchestrator session
