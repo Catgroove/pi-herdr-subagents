@@ -123,7 +123,7 @@ describe("launch plan: curated env exports", () => {
     const fx = makeFixture();
     fx.env.SECRET_XYZ = "leak-me-not";
     fx.env.PI_SUBAGENT_ID = "parents-own-id"; // orchestrator is itself a subagent
-    const agentDefs: AgentDefaults = { autoExit: true, denyTools: "subagent" };
+    const agentDefs: AgentDefaults = { autoExit: true };
     const p = plan(fx, { agent: "worker" }, agentDefs);
     const script = scriptOf(p);
 
@@ -133,7 +133,6 @@ describe("launch plan: curated env exports", () => {
     assert.ok(script.includes(`export PI_SUBAGENT_SESSION=${shellEscape(p.sessionFile)}`));
     assert.ok(script.includes(`export PI_SUBAGENT_AGENT=${shellEscape("worker")}`));
     assert.ok(script.includes("export PI_SUBAGENT_AUTO_EXIT=1"));
-    assert.ok(script.includes(`export PI_DENY_TOOLS=${shellEscape("subagent")}`));
     // pane id is only known inside the pane; forwarded from herdr's own env
     assert.ok(script.includes('export PI_SUBAGENT_PANE="${HERDR_PANE_ID:-}"'));
 
@@ -304,6 +303,23 @@ describe("launch plan: pi argv", () => {
   it("omits --tools without an explicit restriction", () => {
     const fx = makeFixture();
     assert.ok(!plan(fx).piArgv.includes("--tools"));
+  });
+
+  it("passes excludeTools as --exclude-tools", () => {
+    const fx = makeFixture();
+    const argv = plan(fx, { excludeTools: "subagent,subagent_resume" }).piArgv;
+    assert.equal(argv[argv.indexOf("--exclude-tools") + 1], "subagent,subagent_resume");
+  });
+
+  it("adds excludeTools to the agent's deny-tools", () => {
+    const fx = makeFixture();
+    const argv = plan(fx, { excludeTools: "bash" }, { denyTools: "web_search" }).piArgv;
+    assert.equal(argv[argv.indexOf("--exclude-tools") + 1], "web_search,bash");
+  });
+
+  it("omits --exclude-tools without an exclusion", () => {
+    const fx = makeFixture();
+    assert.ok(!plan(fx).piArgv.includes("--exclude-tools"));
   });
 
   it("passes skill prompts with the empty-separator trick for artifact delivery", () => {

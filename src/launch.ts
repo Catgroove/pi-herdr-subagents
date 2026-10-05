@@ -42,6 +42,7 @@ export interface SubagentLaunchParams {
   cwd?: string;
   model?: string;
   tools?: string;
+  excludeTools?: string;
   skills?: string;
   systemPrompt?: string;
   fork?: boolean;
@@ -356,6 +357,13 @@ export function buildLaunchPlan(
   if (toolAllowlist) {
     piArgv.push("--tools", toolAllowlist);
   }
+  const excludedTools = resolveDenyTools(agentDefs);
+  for (const tool of (params.excludeTools ?? "").split(",")) {
+    if (tool.trim()) excludedTools.add(tool.trim());
+  }
+  if (excludedTools.size > 0) {
+    piArgv.push("--exclude-tools", [...excludedTools].join(","));
+  }
 
   // Task delivery: fork inherits the conversation → direct arg; blank-session
   // modes get the artifact-backed handoff so wrapper instructions arrive as
@@ -381,10 +389,6 @@ export function buildLaunchPlan(
     exports.push(`export PI_CODING_AGENT_DIR=${shellEscape(localAgentDir)}`);
   } else if (env.PI_CODING_AGENT_DIR) {
     exports.push(`export PI_CODING_AGENT_DIR=${shellEscape(env.PI_CODING_AGENT_DIR)}`);
-  }
-  const denySet = resolveDenyTools(agentDefs);
-  if (denySet.size > 0) {
-    exports.push(`export PI_DENY_TOOLS=${shellEscape([...denySet].join(","))}`);
   }
   exports.push(`export PI_SUBAGENT_NAME=${shellEscape(params.name)}`);
   if (params.agent) {

@@ -17,7 +17,6 @@ const ENV_KEYS = [
   "HERDR_PANE_ID",
   "HERDR_SOCKET_PATH",
   "HERDR_TAB_ID",
-  "PI_DENY_TOOLS",
   "PI_SUBAGENT_AGENT",
   "PI_HERDR_PI_BIN",
   "PI_CODING_AGENT_DIR",
@@ -208,17 +207,6 @@ describe("index: activation guard", () => {
     const fake = createFakePi();
     herdrSubagents(fake.api);
     assert.ok(fake.toolNames().includes("subagent"));
-  });
-
-  it("PI_DENY_TOOLS=subagent suppresses registration inside herdr", () => {
-    envInsideHerdr();
-    process.env.PI_DENY_TOOLS = "subagent";
-    const fake = createFakePi();
-    herdrSubagents(fake.api);
-    assert.ok(!fake.toolNames().includes("subagent"));
-    // other spawning tools are gated individually, not as a block
-    assert.ok(fake.toolNames().includes("subagent_interrupt"));
-    assert.ok(fake.toolNames().includes("subagents_list"));
   });
 
   it("inside herdr with unreachable socket → visible notify from session_start check", async () => {

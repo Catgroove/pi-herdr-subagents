@@ -596,7 +596,7 @@ export async function startOrchestrator(
     // The herdr server env may leak PI_SUBAGENT_*/PI_HERDR_* from wherever the
     // developer ran the tests; the orchestrator must start clean.
     "unset PI_SUBAGENT_NAME PI_SUBAGENT_AGENT PI_SUBAGENT_ID PI_SUBAGENT_SESSION \\",
-    "  PI_SUBAGENT_AUTO_EXIT PI_SUBAGENT_PANE PI_DENY_TOOLS \\",
+    "  PI_SUBAGENT_AUTO_EXIT PI_SUBAGENT_PANE \\",
     "  PI_HERDR_HOLD_OPEN_SECS",
     `export PATH=${shellEscape(process.env.PATH ?? "")}`,
     `export PI_CODING_AGENT_DIR=${shellEscape(ts.configDir)}`,

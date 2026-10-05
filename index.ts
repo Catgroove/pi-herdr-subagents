@@ -412,6 +412,9 @@ const SubagentParams = Type.Object({
   tools: Type.Optional(
     Type.String({ description: "Comma-separated tools (overrides agent default)" }),
   ),
+  excludeTools: Type.Optional(
+    Type.String({ description: "Comma-separated tools the sub-agent cannot use (added to agent deny-tools)" }),
+  ),
   cwd: Type.Optional(
     Type.String({
       description:
@@ -1014,20 +1017,11 @@ function registerListTool(pi: ExtensionAPI): void {
 export default function herdrSubagents(pi: ExtensionAPI) {
   const inHerdr = isInsideHerdr();
 
-  // Tools denied via PI_DENY_TOOLS env var (set by parent agent based on frontmatter)
-  const deniedTools = new Set(
-    (process.env.PI_DENY_TOOLS ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
-  );
-  const shouldRegister = (name: string) => !deniedTools.has(name);
-
   if (inHerdr) {
-    if (shouldRegister("subagent")) registerSubagentTool(pi);
-    if (shouldRegister("subagent_resume")) registerResumeTool(pi);
-    if (shouldRegister("subagent_interrupt")) registerInterruptTool(pi);
-    if (shouldRegister("subagents_list")) registerListTool(pi);
+    registerSubagentTool(pi);
+    registerResumeTool(pi);
+    registerInterruptTool(pi);
+    registerListTool(pi);
   }
 
   pi.on("session_start", (_event, ctx) => {
