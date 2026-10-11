@@ -4,11 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import {
-  shouldAutoExitOnAgentEnd,
-  shouldMarkUserTookOver,
-  writeExitSidecar,
-} from "../subagent-done.ts";
+import { settledExit, writeExitSidecar } from "../subagent-done.ts";
 import { writeContextUsageSidecar } from "../src/context-usage.ts";
 import {
   clearActiveSubagents,
@@ -21,60 +17,13 @@ afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()!();
 });
 
-describe("subagent-done: shouldMarkUserTookOver", () => {
-  it("ignores the initial injected task before the first agent run", () => {
-    assert.equal(shouldMarkUserTookOver(false), false);
-  });
-
-  it("treats later input as manual takeover", () => {
-    assert.equal(shouldMarkUserTookOver(true), true);
-  });
-});
-
-describe("subagent-done: shouldAutoExitOnAgentEnd", () => {
-  it("auto-exits after normal completion when there was no takeover", () => {
+describe("subagent-done: settledExit", () => {
+  it("exits as done after a clean reply", () => {
     const messages = [{ role: "assistant", stopReason: "stop" }];
-    assert.equal(shouldAutoExitOnAgentEnd(false, messages), true);
+    assert.deepEqual(settledExit(false, messages), { type: "done" });
   });
 
-  it("auto-exits after normal completion even when the user sent the prompt", () => {
-    const messages = [{ role: "assistant", stopReason: "stop" }];
-    assert.equal(shouldAutoExitOnAgentEnd(true, messages), true);
-  });
-
-  it("stays open after Escape aborts the run", () => {
-    const messages = [{ role: "assistant", stopReason: "aborted" }];
-    assert.equal(shouldAutoExitOnAgentEnd(false, messages), false);
-  });
-
-  it("stays open on API errors (timeout, connection failure) so pi can retry", () => {
-    const messages = [{ role: "assistant", stopReason: "error", errorMessage: "Request timed out." }];
-    assert.equal(shouldAutoExitOnAgentEnd(false, messages), false);
-  });
-
-  it("stays open on connection errors so pi can retry", () => {
-    const messages = [{ role: "assistant", stopReason: "error", errorMessage: "Connection error: WebSocket error" }];
-    assert.equal(shouldAutoExitOnAgentEnd(false, messages), false);
-  });
-
-  it("defaults to exiting when no messages are available", () => {
-    assert.equal(shouldAutoExitOnAgentEnd(false, undefined), true);
-  });
-
-  it("stays open when the turn produced no new assistant message (errored/retrying turn)", () => {
-    // Resumed-session failure mode (verified live, pi 0.80.3): the resume
-    // message is delivered, the first request times out, pi schedules a retry,
-    // and agent_end fires with the conversation ending at the just-delivered
-    // USER message. Walking backwards would find the PREVIOUS conversation's
-    // assistant (stopReason "stop") and shut pi down mid-retry.
-    const messages = [
-      { role: "assistant", stopReason: "stop" }, // stale: pre-resume history
-      { role: "user" }, // the resume message — no reply yet
-    ];
-    assert.equal(shouldAutoExitOnAgentEnd(false, messages), false);
-  });
-
-  it("still auto-exits when a completed turn follows a resumed conversation", () => {
+  it("exits as done when a completed turn follows a resumed conversation", () => {
     const messages = [
       { role: "assistant", stopReason: "stop" },
       { role: "user" },
@@ -82,12 +31,37 @@ describe("subagent-done: shouldAutoExitOnAgentEnd", () => {
       { role: "toolResult" },
       { role: "assistant", stopReason: "stop" },
     ];
-    assert.equal(shouldAutoExitOnAgentEnd(false, messages), true);
+    assert.deepEqual(settledExit(false, messages), { type: "done" });
+  });
+
+  it("stays open after Escape aborts the run", () => {
+    const messages = [{ role: "assistant", stopReason: "aborted" }];
+    assert.equal(settledExit(true, messages), null);
+  });
+
+  it("exits as an error with the provider's message when the run settles on a refusal", () => {
+    const errorMessage = "Codex error: This content was flagged for possible cybersecurity risk.";
+    const messages = [{ role: "assistant", stopReason: "error", errorMessage }];
+    assert.deepEqual(settledExit(false, messages), { type: "error", message: errorMessage });
+  });
+
+  it("exits as an error when a transient failure exhausted pi's retries", () => {
+    const messages = [{ role: "assistant", stopReason: "error", errorMessage: "Request timed out." }];
+    assert.deepEqual(settledExit(false, messages), { type: "error", message: "Request timed out." });
+  });
+
+  it("exits as an error when the run produced no reply, not as done with a stale one", () => {
+    const messages = [
+      { role: "assistant", stopReason: "stop" }, // stale: pre-resume history
+      { role: "user" }, // the resume message — never answered
+    ];
+    assert.equal(settledExit(false, messages)?.type, "error");
+    assert.equal(settledExit(false, undefined)?.type, "error");
   });
 
   it("stays open while nested subagents are still running", () => {
     const messages = [{ role: "assistant", stopReason: "stop" }];
-    assert.equal(shouldAutoExitOnAgentEnd(false, messages, 2), false);
+    assert.equal(settledExit(false, messages, 2), null);
   });
 });
 
@@ -102,6 +76,12 @@ describe("subagent-done: .exit sidecar shapes (cross-extension contract)", () =>
     const sessionFile = makeSessionFile();
     writeExitSidecar(sessionFile, { type: "done" });
     assert.equal(readFileSync(`${sessionFile}.exit`, "utf8"), '{"type":"done"}');
+  });
+
+  it("error writes type/message", () => {
+    const sessionFile = makeSessionFile();
+    writeExitSidecar(sessionFile, { type: "error", message: "refused" });
+    assert.equal(readFileSync(`${sessionFile}.exit`, "utf8"), '{"type":"error","message":"refused"}');
   });
 
   it("ping writes type/name/message in reference byte order", () => {
@@ -152,7 +132,7 @@ describe("subagent-done: subagent_done tool writes sidecar and shuts down", () =
     return join(dir, "child.jsonl");
   }
 
-  it("does not recreate a consumed sidecar when agent_end follows subagent_done", async () => {
+  it("does not recreate a consumed sidecar when agent_settled follows subagent_done", async () => {
     const sessionFile = makeSessionFile();
     const origSession = process.env.PI_SUBAGENT_SESSION;
     const origAutoExit = process.env.PI_SUBAGENT_AUTO_EXIT;
@@ -182,14 +162,12 @@ describe("subagent-done: subagent_done tool writes sidecar and shuts down", () =
     assert.equal(existsSync(`${sessionFile}.exit`), true, "tool writes the terminal sidecar");
 
     rmSync(`${sessionFile}.exit`);
-    handlers.agent_end?.(
-      { messages: [{ role: "assistant", stopReason: "stop" }] },
-      fakeCtx,
-    );
+    handlers.agent_end?.({ messages: [{ role: "assistant", stopReason: "stop" }] }, fakeCtx);
+    handlers.agent_settled?.({ aborted: false }, fakeCtx);
     assert.equal(
       existsSync(`${sessionFile}.exit`),
       false,
-      "agent_end must not recreate a sidecar already consumed by the watcher",
+      "agent_settled must not recreate a sidecar already consumed by the watcher",
     );
   });
 
@@ -247,7 +225,7 @@ describe("subagent-done: user close without subagent_done leaves no sidecar", ()
     return join(dir, "child.jsonl");
   }
 
-  it("no sidecar written when agent_end fires after abort (user Escape)", async () => {
+  it("no sidecar written when the run settles after abort (user Escape)", async () => {
     const sessionFile = makeSessionFile();
     const origSession = process.env.PI_SUBAGENT_SESSION;
     const origAutoExit = process.env.PI_SUBAGENT_AUTO_EXIT;
@@ -275,10 +253,8 @@ describe("subagent-done: user close without subagent_done leaves no sidecar", ()
 
     handlers.agent_start?.();
     // User aborts — should NOT auto-exit, no sidecar
-    handlers.agent_end?.(
-      { messages: [{ role: "assistant", stopReason: "aborted" }] },
-      fakeCtx,
-    );
+    handlers.agent_end?.({ messages: [{ role: "assistant", stopReason: "aborted" }] }, fakeCtx);
+    handlers.agent_settled?.({ aborted: true }, fakeCtx);
 
     assert.equal(shutdownCalled, false, "should NOT shutdown on abort");
     let sidecarExists = false;
@@ -359,14 +335,14 @@ describe("subagent-done: session_shutdown context usage fallback", () => {
   });
 });
 
-describe("subagent-done: agent_end writes .exit sidecar on clean auto-exit", () => {
+describe("subagent-done: agent_settled writes the .exit sidecar on auto-exit", () => {
   function makeSessionFile(): string {
     const dir = mkdtempSync(join(tmpdir(), "herdr-done-"));
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
     return join(dir, "child.jsonl");
   }
 
-  it("writes done sidecar when agent_end triggers auto-exit", async () => {
+  it("writes done sidecar when a clean run settles", async () => {
     const sessionFile = makeSessionFile();
     const origSession = process.env.PI_SUBAGENT_SESSION;
     const origAutoExit = process.env.PI_SUBAGENT_AUTO_EXIT;
@@ -392,20 +368,17 @@ describe("subagent-done: agent_end writes .exit sidecar on clean auto-exit", () 
     const mod = await import("../subagent-done.ts");
     mod.default(fakePi as any);
 
-    // Simulate agent_start so agentStarted = true
     handlers.agent_start?.();
-    // Simulate agent_end with a clean completion
-    handlers.agent_end?.(
-      { messages: [{ role: "assistant", stopReason: "stop" }] },
-      fakeCtx,
-    );
+    handlers.agent_end?.({ messages: [{ role: "assistant", stopReason: "stop" }] }, fakeCtx);
+    assert.equal(shutdownCalled, false, "agent_end alone must not exit; a retry may follow");
+    handlers.agent_settled?.({ aborted: false }, fakeCtx);
 
     assert.equal(shutdownCalled, true, "should have called shutdown");
     const sidecar = readFileSync(`${sessionFile}.exit`, "utf8");
     assert.equal(sidecar, '{"type":"done"}', "should write done sidecar on auto-exit");
   });
 
-  it("does NOT write done sidecar when agent_end is an error (retry)", async () => {
+  it("stays open across a retried error and writes an error sidecar once the run settles on one", async () => {
     const sessionFile = makeSessionFile();
     const origSession = process.env.PI_SUBAGENT_SESSION;
     const origAutoExit = process.env.PI_SUBAGENT_AUTO_EXIT;
@@ -431,16 +404,20 @@ describe("subagent-done: agent_end writes .exit sidecar on clean auto-exit", () 
     const mod = await import("../subagent-done.ts");
     mod.default(fakePi as any);
 
+    const failed = { messages: [{ role: "assistant", stopReason: "error", errorMessage: "Request timed out." }] };
     handlers.agent_start?.();
-    handlers.agent_end?.(
-      { messages: [{ role: "assistant", stopReason: "error", errorMessage: "Request timed out." }] },
-      fakeCtx,
-    );
+    handlers.agent_end?.(failed, fakeCtx); // pi retries: agent_start/agent_end again, no settle yet
+    handlers.agent_start?.();
+    handlers.agent_end?.(failed, fakeCtx);
+    assert.equal(shutdownCalled, false, "should NOT shutdown while pi may still retry");
+    assert.equal(existsSync(`${sessionFile}.exit`), false, "should NOT signal while pi may still retry");
 
-    assert.equal(shutdownCalled, false, "should NOT shutdown on error");
-    let sidecarExists = false;
-    try { readFileSync(`${sessionFile}.exit`); sidecarExists = true; } catch {}
-    assert.equal(sidecarExists, false, "should NOT write sidecar on error");
+    handlers.agent_settled?.({ aborted: false }, fakeCtx);
+    assert.equal(shutdownCalled, true, "should shut down once the run settled on the error");
+    assert.equal(
+      readFileSync(`${sessionFile}.exit`, "utf8"),
+      '{"type":"error","message":"Request timed out."}',
+    );
   });
 
   it("does NOT auto-exit an orchestrator while nested subagents are running", async () => {
@@ -470,10 +447,8 @@ describe("subagent-done: agent_end writes .exit sidecar on clean auto-exit", () 
 
     const mod = await import("../subagent-done.ts");
     mod.default(fakePi as any);
-    handlers.agent_end?.(
-      { messages: [{ role: "assistant", stopReason: "stop" }] },
-      fakeCtx,
-    );
+    handlers.agent_end?.({ messages: [{ role: "assistant", stopReason: "stop" }] }, fakeCtx);
+    handlers.agent_settled?.({ aborted: false }, fakeCtx);
 
     assert.equal(shutdownCalled, false, "should keep the nested orchestrator alive");
     let sidecarExists = false;

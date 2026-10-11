@@ -12,8 +12,9 @@
 //       check; a watched-but-missing pane exited during the gap.
 //
 // Semantic sidecars (written by the child / wrapper script):
-//   <sessionFile>.exit     — {"type":"done"} or {"type":"ping","name","message"}
-//                            written by subagent-done.ts before the child exits.
+//   <sessionFile>.exit     — {"type":"done"}, {"type":"error","message"} or
+//                            {"type":"ping","name","message"} written by
+//                            subagent-done.ts before the child exits.
 //   <sessionFile>.exitcode — process exit code, written by the wrapper script
 //                            (pane.exited carries no exit code — verified).
 //
@@ -48,6 +49,7 @@ export type SubagentOutcome =
   | { kind: "completed"; summary: string; exitCode: 0 }
   | { kind: "completed-user-exit"; summary: string; exitCode: 0 } // no .exit sidecar
   | { kind: "ping"; name: string; message: string }
+  | { kind: "failed"; error: string } // the child's run settled on an error
   | { kind: "launch-failed"; exitCode: number; heldOpen: boolean; paneOutput: string | null }
   | { kind: "crashed"; exitCode: number; summary: string | null; paneOutput: string | null }
   | { kind: "pane-killed"; summary: string | null }
@@ -215,6 +217,11 @@ export function watchSubagent(
           summary: readSummary() ?? "Sub-agent exited without output",
           exitCode: 0,
         };
+      }
+      if (exitData?.type === "error") {
+        // Like done, settle only once the child process has exited.
+        if (trigger === "sidecar" && readExitCode() === null) return null;
+        return { kind: "failed", error: exitData.message ?? "Unknown error" };
       }
 
       const exitInfo = readExitCode();

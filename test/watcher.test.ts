@@ -158,6 +158,23 @@ describe("watcher: lifecycle classification matrix", () => {
     assert.ok(!existsSync(`${running.sessionFile}.exitcode`), "exitcode sidecar consumed");
   });
 
+  it("error sidecar + exit 0 → failed with the child's error", async () => {
+    const running = makeRunning();
+    writeSession(running.sessionFile, "Running the remaining tests.");
+    writeFileSync(`${running.sessionFile}.exit`, JSON.stringify({ type: "error", message: "refused" }));
+    writeFileSync(`${running.sessionFile}.exitcode`, "0\n");
+    const fakeStream = makeFakeStream();
+    const fakeClient = makeFakeClient();
+
+    const promise = watch(running, { stream: fakeStream.stream, client: fakeClient.client });
+    fakeStream.fire(running.paneId, "pane_exited");
+    const outcome = await promise;
+
+    assert.deepEqual(outcome, { kind: "failed", error: "refused" });
+    assert.ok(!existsSync(`${running.sessionFile}.exit`), "exit sidecar consumed");
+    assert.ok(!existsSync(`${running.sessionFile}.exitcode`), "exitcode sidecar consumed");
+  });
+
   it("ping sidecar → ping", async () => {
     const running = makeRunning();
     writeSession(running.sessionFile, "I need help with X");

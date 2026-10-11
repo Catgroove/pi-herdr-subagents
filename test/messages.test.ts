@@ -200,6 +200,14 @@ describe("buildOutcomeMessage", () => {
     assert.match(msg.content, /Session: /);
   });
 
+  it("failed → 'Sub-agent X failed' + the error + session path", () => {
+    const msg = build({ kind: "failed", error: "Codex error: flagged." });
+    assert.ok(msg);
+    assert.match(msg.content, /failed after .*: Codex error: flagged\./);
+    assert.match(msg.content, /Session: /);
+    assert.equal(msg.details.error, "failed");
+  });
+
   it("pane-killed → honest 'closed before completion' + last message + session path", () => {
     const msg = build({ kind: "pane-killed", summary: "Halfway through the tests." });
     assert.ok(msg);
@@ -318,6 +326,7 @@ describe("message renderers", () => {
   it("subagent_result renders failure statuses honestly", () => {
     for (const [outcome, expected] of [
       [{ kind: "crashed", exitCode: 1, summary: "boom" }, /failed \(exit 1\)/],
+      [{ kind: "failed", error: "refused" }, /failed/],
       [{ kind: "launch-failed", exitCode: 7, heldOpen: true }, /failed to launch/],
       [{ kind: "pane-killed", summary: null }, /pane closed/],
       [{ kind: "gap-exit", summary: null, exitCode: null }, /event-stream gap/],

@@ -147,6 +147,16 @@ export function buildOutcomeMessage(
         details: { ...baseDetails, exitCode: 0, summary: outcome.summary },
       };
 
+    case "failed":
+      return {
+        customType: "subagent_result",
+        content:
+          `Sub-agent "${running.name}" failed after ${formatElapsed(elapsed)}: ${outcome.error}` +
+          `${sessionRef(running.sessionFile)}${usageSuffix}`,
+        display: true,
+        details: { ...baseDetails, error: "failed", summary: outcome.error },
+      };
+
     case "launch-failed": {
       const summaryLines = [
         `Pane: ${running.paneId} (herdr)`,
@@ -266,6 +276,8 @@ function statusText(disposition: string | undefined, exitCode: number): string {
       return "completed";
     case "completed-user-exit":
       return "closed by user (no subagent_done)";
+    case "failed":
+      return "failed";
     case "launch-failed":
       return `failed to launch (exit ${exitCode})`;
     case "pane-killed":

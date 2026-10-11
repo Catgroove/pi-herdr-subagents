@@ -10,7 +10,8 @@
  *
  * The `.exit` sidecar written here is a cross-extension contract: the
  * orchestrator's watcher (src/watcher.ts) classifies completion from exactly
- * these shapes — {"type":"done"} and {"type":"ping","name":...,"message":...}.
+ * these shapes — {"type":"done"}, {"type":"error","message":...} and
+ * {"type":"ping","name":...,"message":...}.
  * Keep this file dependency-light: it loads into EVERY child.
  */
 import type { ContextUsage, ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -20,47 +21,43 @@ import { writeFileSync } from "node:fs";
 import { writeContextUsageSidecar } from "./src/context-usage.ts";
 import { getActiveSubagentCount } from "./src/runtime-state.ts";
 
-export function shouldMarkUserTookOver(agentStarted: boolean): boolean {
-  return agentStarted;
-}
-
-export function shouldAutoExitOnAgentEnd(
-  _userTookOver: boolean,
+/**
+ * Decide how an auto-exit subagent ends once pi has settled a run, meaning no
+ * automatic retry, compaction, or queued continuation will follow. Returns
+ * null to keep the session open.
+ *
+ * `messages` are those of the run's last agent_end, undefined when the run
+ * ended before any. A run that settles on an error (a provider refusal, or a
+ * transient failure that exhausted pi's retries) or without a reply exits as
+ * an error, so the orchestrator hears about it instead of waiting on an idle
+ * pane forever.
+ */
+export function settledExit(
+  aborted: boolean,
   messages: any[] | undefined,
   activeSubagentCount = 0,
-): boolean {
+): ExitSidecarData | null {
+  // Escape leaves the session open for inspection or another prompt.
+  if (aborted) return null;
+
   // A subagent can itself act as an orchestrator. Exiting its pi process here
   // would abort the nested watchers, so their eventual results would have no
   // live session to steer. Keep it open until every nested child has settled.
-  if (activeSubagentCount > 0) return false;
+  if (activeSubagentCount > 0) return null;
 
-  // Manual input should not strand an auto-exit subagent. If the latest agent
-  // turn completed normally, close the session. Escape/abort still leaves it
-  // open for inspection or another prompt.
-  if (messages) {
-    // A turn that ends at a user message produced no assistant reply — the
-    // request errored / is retrying. This happens on resumed sessions whose
-    // first request times out (verified live, pi 0.80.3): agent_end fires
-    // while pi is "Retrying (1/3)"; walking backwards would find the
-    // PREVIOUS conversation's assistant and shut pi down mid-retry.
-    const last = messages[messages.length - 1];
-    if (last?.role === "user") return false;
-
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      if (msg?.role === "assistant") {
-        // Don't auto-exit on errors (timeouts, connection failures) — let pi retry.
-        // Only exit on clean completions (stop, toolUse) or explicit abort.
-        return msg.stopReason !== "aborted" && msg.stopReason !== "error";
-      }
-    }
+  const last = messages?.[messages.length - 1];
+  if (last?.role !== "assistant") {
+    return { type: "error", message: "The run ended without an assistant reply." };
   }
-
-  return true;
+  if (last.stopReason === "error") {
+    return { type: "error", message: last.errorMessage || "The run ended with an unknown error." };
+  }
+  return { type: "done" };
 }
 
 export type ExitSidecarData =
   | { type: "done" }
+  | { type: "error"; message: string }
   | { type: "ping"; name: string; message: string };
 
 /**
@@ -68,20 +65,22 @@ export type ExitSidecarData =
  * Byte-shape must match pi-interactive-subagents exactly (key order included):
  *   {"type":"done"}
  *   {"type":"ping","name":"...","message":"..."}
+ * plus this package's own {"type":"error","message":"..."}.
  */
 export function writeExitSidecar(sessionFile: string, data: ExitSidecarData): void {
   const payload =
     data.type === "done"
       ? { type: "done" as const }
-      : { type: "ping" as const, name: data.name, message: data.message };
+      : data.type === "error"
+        ? { type: "error" as const, message: data.message }
+        : { type: "ping" as const, name: data.name, message: data.message };
   writeFileSync(`${sessionFile}.exit`, JSON.stringify(payload));
 }
 
 export default function (pi: ExtensionAPI) {
   const autoExit = process.env.PI_SUBAGENT_AUTO_EXIT === "1";
 
-  let userTookOver = false;
-  let agentStarted = false;
+  let lastRunMessages: any[] | undefined;
   let contextUsageWritten = false;
   let terminalSidecarWritten = false;
 
@@ -120,39 +119,28 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  pi.on("input", () => {
-    // Ignore the initial task message that starts an autonomous subagent.
-    // Only inputs after the first agent run has started count as user takeover.
-    if (!shouldMarkUserTookOver(agentStarted)) return;
-    userTookOver = true;
-  });
-
   pi.on("agent_start", () => {
-    agentStarted = true;
+    lastRunMessages = undefined;
   });
 
-  pi.on("agent_end", (event, ctx) => {
-    const messages = (event as any).messages as any[] | undefined;
-    const shouldExit =
-      autoExit &&
-      shouldAutoExitOnAgentEnd(userTookOver, messages, getActiveSubagentCount());
+  pi.on("agent_end", (event) => {
+    lastRunMessages = event.messages;
+  });
 
-    if (shouldExit) {
-      // Write the .exit sidecar so the watcher classifies this as a proper
-      // completion, not a user close. Most models finish and stop talking
-      // without explicitly calling subagent_done — a clean auto-exit IS a
-      // completion.
-      snapshotContextUsage(ctx);
-      signalTerminalSidecar({ type: "done" });
-      ctx.shutdown();
-      return;
-    }
+  // Decide on agent_settled, not agent_end: agent_end also fires before each
+  // automatic retry, while agent_settled fires once pi will do nothing more.
+  pi.on("agent_settled", (event, ctx) => {
+    if (!autoExit) return;
+    const exit = settledExit(event.aborted, lastRunMessages, getActiveSubagentCount());
+    if (!exit) return;
 
-    if (autoExit) {
-      // Reset any recorded manual input marker. Auto-exit is decided by whether
-      // the latest agent turn completed normally, not by who initiated it.
-      userTookOver = false;
-    }
+    // Write the .exit sidecar so the watcher classifies this as a proper
+    // completion, not a user close. Most models finish and stop talking
+    // without explicitly calling subagent_done — a clean auto-exit IS a
+    // completion.
+    snapshotContextUsage(ctx);
+    signalTerminalSidecar(exit);
+    ctx.shutdown();
   });
 
   // User-driven exits do not pass through a terminal tool or clean agent_end.
