@@ -13,7 +13,11 @@
  * pi-extension/subagents/index.ts @ fix/launch-verify-retry, adapted for herdr
  * (argv launch via src/launch.ts + herdr client, no mux/screen-scrape code).
  */
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  AgentToolResult,
+  ExtensionAPI,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -645,7 +649,8 @@ function registerSubagentTool(pi: ExtensionAPI): void {
         );
       }
 
-      const text = typeof result.content[0]?.text === "string" ? result.content[0].text : "";
+      const first = result.content[0];
+      const text = first?.type === "text" ? first.text : "";
       return new Text(theme.fg("dim", text), 0, 0);
     },
   });
@@ -843,7 +848,8 @@ function registerResumeTool(pi: ExtensionAPI): void {
         );
       }
 
-      const text = typeof result.content[0]?.text === "string" ? result.content[0].text : "";
+      const first = result.content[0];
+      const text = first?.type === "text" ? first.text : "";
       return new Text(theme.fg("dim", text), 0, 0);
     },
   });
@@ -878,7 +884,17 @@ export function resolveInterruptTarget(params: {
   return { error: `Ambiguous subagent name "${requestedName}". Matches: ${candidates}` };
 }
 
-async function handleSubagentInterrupt(params: { id?: string; name?: string }) {
+type InterruptDetails = {
+  id?: string;
+  name?: string;
+  status?: "interrupt_requested";
+  error?: string;
+};
+
+async function handleSubagentInterrupt(params: {
+  id?: string;
+  name?: string;
+}): Promise<AgentToolResult<InterruptDetails>> {
   const resolved = resolveInterruptTarget(params);
   if ("error" in resolved) {
     return errorResult(resolved.error, resolved.error);
@@ -902,7 +918,7 @@ async function handleSubagentInterrupt(params: { id?: string; name?: string }) {
     content: [
       { type: "text" as const, text: `Interrupt requested for subagent "${running.name}".` },
     ],
-    details: { id: running.id, name: running.name, status: "interrupt_requested" },
+    details: { id: running.id, name: running.name, status: "interrupt_requested" as const },
   };
 }
 
@@ -951,7 +967,8 @@ function registerInterruptTool(pi: ExtensionAPI): void {
         );
       }
 
-      const text = typeof result.content[0]?.text === "string" ? result.content[0].text : "";
+      const first = result.content[0];
+      const text = first?.type === "text" ? first.text : "";
       return new Text(theme.fg("dim", text), 0, 0);
     },
   });
