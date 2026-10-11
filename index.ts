@@ -13,8 +13,8 @@
  * pi-extension/subagents/index.ts @ fix/launch-verify-retry, adapted for herdr
  * (argv launch via src/launch.ts + herdr client, no mux/screen-scrape code).
  */
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";

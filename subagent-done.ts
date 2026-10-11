@@ -14,7 +14,7 @@
  * {"type":"ping","name":...,"message":...}.
  * Keep this file dependency-light: it loads into EVERY child.
  */
-import type { ContextUsage, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ContextUsage, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { writeFileSync } from "node:fs";
 

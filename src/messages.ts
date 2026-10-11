@@ -16,8 +16,8 @@
 //       the orchestrator can resume.
 //
 // Tool descriptions/promptSnippets are NOT here (Task 10) — outcome→message only.
-import { keyHint } from "@mariozechner/pi-coding-agent";
-import { Box, Text } from "@mariozechner/pi-tui";
+import { keyHint } from "@earendil-works/pi-coding-agent";
+import { Box, Text } from "@earendil-works/pi-tui";
 
 import type { ContextUsageSnapshot } from "./context-usage.ts";
 import type { RunningSubagent, SubagentOutcome } from "./watcher.ts";
