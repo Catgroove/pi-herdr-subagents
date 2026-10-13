@@ -218,6 +218,36 @@ describe("subagent-done: subagent_done tool writes sidecar and shuts down", () =
   });
 });
 
+describe("subagent-done: terminal tools end the run", () => {
+  it("subagent_done and caller_ping return terminate so pi skips the follow-up turn", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "herdr-done-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    const origSession = process.env.PI_SUBAGENT_SESSION;
+    process.env.PI_SUBAGENT_SESSION = join(dir, "child.jsonl");
+    cleanups.push(() => {
+      if (origSession !== undefined) process.env.PI_SUBAGENT_SESSION = origSession;
+      else delete process.env.PI_SUBAGENT_SESSION;
+    });
+
+    const registeredTools: Record<string, any> = {};
+    const fakePi = {
+      on: () => {},
+      registerTool: (tool: any) => { registeredTools[tool.name] = tool; },
+    };
+    const fakeCtx = { shutdown: () => {}, getContextUsage: () => undefined };
+
+    const mod = await import("../subagent-done.ts");
+    mod.default(fakePi as any);
+
+    const done = await registeredTools.subagent_done.execute("call-1", {}, null, () => {}, fakeCtx);
+    assert.equal(done.terminate, true);
+    const ping = await registeredTools.caller_ping.execute(
+      "call-2", { message: "need input" }, null, () => {}, fakeCtx,
+    );
+    assert.equal(ping.terminate, true);
+  });
+});
+
 describe("subagent-done: user close without subagent_done leaves no sidecar", () => {
   function makeSessionFile(): string {
     const dir = mkdtempSync(join(tmpdir(), "herdr-done-"));
