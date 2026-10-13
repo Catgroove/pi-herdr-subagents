@@ -21,7 +21,7 @@ import type {
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -717,6 +717,21 @@ async function executeSubagentResume(
     return errorResult(
       `Error: session file not found: ${params.sessionPath}`,
       "session not found",
+    );
+  }
+
+  // A transient error or quiet session tail does not mean the child died;
+  // a second pi on the same session file duplicates work and interleaves writes.
+  const sessionPath = resolve(params.sessionPath);
+  const owner = [...runningSubagents.values()].find(
+    (running) => resolve(running.sessionFile) === sessionPath,
+  );
+  if (owner) {
+    return errorResult(
+      `Cannot resume: subagent "${owner.name}" [${owner.id}] is still running on this session. ` +
+        "Its result will be delivered automatically when it finishes; wait for it, " +
+        "or use subagent_interrupt to stop its current turn.",
+      "session already running",
     );
   }
 

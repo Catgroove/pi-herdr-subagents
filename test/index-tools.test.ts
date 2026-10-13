@@ -347,6 +347,34 @@ describe("index tools: subagent_resume", () => {
     assert.match(result.content[0].text, /session file not found/);
   });
 
+  it("refuses to resume a session a running subagent still owns", async () => {
+    const fake = registerAll();
+    const fx = makeFixture();
+    const sessionPath = join(fx.root, "child.jsonl");
+    writeChildSession(sessionPath, "old summary");
+    __test__.runningSubagents.set(
+      "a1",
+      makeRunning({ id: "a1", name: "Reviewer", sessionFile: sessionPath }),
+    );
+    let paneStarted = false;
+    __test__.setDeps({
+      client: makeFakeClient({
+        paneStart: async () => {
+          paneStarted = true;
+          return { paneId: "w1:p7", terminalId: "", workspaceId: "", tabId: "" };
+        },
+      }),
+    });
+
+    const tool = fake.findTool("subagent_resume");
+    const result = await tool.execute("t1", { sessionPath }, undefined, undefined, fx.ctx);
+
+    assert.equal(result.details.error, "session already running");
+    assert.match(result.content[0].text, /"Reviewer" \[a1\] is still running/);
+    assert.match(result.content[0].text, /subagent_interrupt/);
+    assert.equal(paneStarted, false, "no second process launched");
+  });
+
   it("clears stale sidecars, launches via the dispatcher, and extracts only NEW entries for the summary", async () => {
     const fake = registerAll();
     const fx = makeFixture();
